@@ -56,6 +56,7 @@ epd-waveshare = "0.6.0"
 fugit = "0.3.7"
 const_format = "0.2.34"
 profont = "0.7.0"
+function_name = "0.3.0"
 
 [profile.release]
 # Enable generation of debug symbols even on release builds
