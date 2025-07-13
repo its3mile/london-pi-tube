@@ -1,3 +1,4 @@
+pub mod status;
 pub mod prediction;
 pub mod response_models;
 

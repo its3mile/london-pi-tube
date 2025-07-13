@@ -62,6 +62,14 @@ pub fn extract_first_json_object(body: &[u8]) -> Option<&[u8]> {
     }
 }
 
+pub fn is_empty_json_array(body: &[u8]) -> bool {
+    if body.len() == 2 && body[0] == b'[' && body[1] == b']' {
+        true
+    } else {
+        false
+    }
+}
+
 pub fn first_two_words(s: &str) -> &str {
     let mut space_count = 0;
     for (i, c) in s.char_indices() {

@@ -43,7 +43,7 @@
             "chip": "RP2040",
             "coreConfigs": [
                 {
-                    "programBinary": "${workspaceFolder}/examples/thumbv6m-none-eabi/release/london-pi-tube",
+                    "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/release/london-pi-tube",
                     "coreIndex": 0,
                     "rttEnabled": true,
                     "rttChannelFormats": [

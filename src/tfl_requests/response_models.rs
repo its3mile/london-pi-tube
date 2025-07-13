@@ -1,5 +1,6 @@
 use defmt::Format;
 use heapless::String;
+use heapless::Vec;
 use serde::Deserialize;
 
 pub const TFL_API_FIELD_SHORT_STR_SIZE: usize = 32;
@@ -8,7 +9,7 @@ pub const TFL_API_FIELD_LONG_STR_SIZE: usize = 128;
 
 #[derive(Deserialize, Debug, Format)]
 #[serde(rename_all = "camelCase")]
-pub struct TflApiPredictionTiming {
+pub struct PredictionTiming {
     #[serde(rename = "$type")]
     pub _type: String<TFL_API_FIELD_LONG_STR_SIZE>,
     pub countdown_server_adjustment: String<TFL_API_FIELD_STR_SIZE>,
@@ -21,7 +22,7 @@ pub struct TflApiPredictionTiming {
 
 #[derive(Deserialize, Debug, Format)]
 #[serde(rename_all = "camelCase")]
-pub struct TflApiPreciction {
+pub struct Prediction {
     #[serde(rename = "$type")]
     pub _type: String<TFL_API_FIELD_LONG_STR_SIZE>,
     pub id: String<TFL_API_FIELD_STR_SIZE>,
@@ -43,5 +44,23 @@ pub struct TflApiPreciction {
     pub expected_arrival: String<TFL_API_FIELD_STR_SIZE>,
     pub time_to_live: String<TFL_API_FIELD_STR_SIZE>,
     pub mode_name: String<TFL_API_FIELD_STR_SIZE>,
-    pub timing: TflApiPredictionTiming,
+    pub timing: PredictionTiming,
+}
+
+#[derive(Deserialize, Debug, Format)]
+#[serde(rename_all = "camelCase")]
+pub struct Status {
+    #[serde(rename = "$type")]
+    pub _type: String<TFL_API_FIELD_LONG_STR_SIZE>,
+    pub line_statuses: Vec<LineStatus, 1>,
+    // Incomplete implementation, as much of the data is not required
+}
+
+#[derive(Deserialize, Debug, Format)]
+#[serde(rename_all = "camelCase")]
+pub struct LineStatus {
+    #[serde(rename = "$type")]
+    pub _type: String<TFL_API_FIELD_LONG_STR_SIZE>,
+    pub status_severity_description: String<TFL_API_FIELD_SHORT_STR_SIZE>,
+    // Incomplete implementation, as much of the data is not required
 }

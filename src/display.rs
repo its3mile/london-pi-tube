@@ -1,6 +1,9 @@
+use crate::string_utilities::{first_two_words, insert_linebreaks_inplace};
+use crate::tfl_requests::response_models::{Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE};
 use ::function_name::named;
 use core::fmt::Write;
 use defmt::info;
+use defmt_rtt as _;
 use defmt_rtt as _;
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::spi;
@@ -19,10 +22,8 @@ use embedded_graphics::{
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
 use heapless::String;
+use panic_probe as _;
 use profont::*;
-
-use crate::string_utilities::{first_two_words, insert_linebreaks_inplace};
-use crate::tfl_requests::response_models::{TflApiPreciction, TFL_API_FIELD_LONG_STR_SIZE};
 
 pub type DisplayDriver = EPD3in7<
     ExclusiveDevice<Spi<'static, embassy_rp::peripherals::SPI1, spi::Blocking>, Output<'static>, Delay>,
@@ -40,7 +41,8 @@ pub type DisplaySpiDevice =
 pub async fn update_display_task(
     mut epd_driver: DisplayDriver,
     mut spi_device: DisplaySpiDevice,
-    tfl_api_prediction_channel_receiver: Receiver<'static, ThreadModeRawMutex, TflApiPreciction, 1>,
+    prediction_receiver: Receiver<'static, ThreadModeRawMutex, Prediction, 1>,
+    status_receiver: Receiver<'static, ThreadModeRawMutex, Status, 1>,
 ) {
     // Create a Display buffer to draw on, specific for this ePaper
     info!("{}: Initialising display nbuffer", function_name!());
@@ -76,22 +78,28 @@ pub async fn update_display_task(
 
     loop {
         info!("{}: Waiting for prediction data on channel", function_name!());
-        let mut prediction: TflApiPreciction = tfl_api_prediction_channel_receiver.receive().await;
+        let mut prediction: Prediction = prediction_receiver.receive().await;
         info!("{}: Received prediction data on channel", function_name!());
+
+        info!("{}: Waiting for status data on channel", function_name!());
+        let status: Status = status_receiver.receive().await;
+        info!("{}: Received status data on channel", function_name!());
 
         // Prepare the display message
         // Clear the display
         display.clear(Color::White).ok();
 
-        // Line
-        prediction
-            .line_name
-            .push_str(" Line\n")
-            .expect("Failed to format line name");
+        // Line & status
+        let mut line_and_status = String::<TFL_API_FIELD_LONG_STR_SIZE>::new();
+        let _ = write!(
+            &mut line_and_status,
+            "{} Line - {}\n",
+            prediction.line_name, status.line_statuses[0].status_severity_description
+        );
         let character_style = MonoTextStyle::new(&PROFONT_14_POINT, Color::Black);
         let text_style = TextStyleBuilder::new().alignment(Alignment::Left).build();
         let position = display.bounding_box().top_left + Point::new(10, 25);
-        let next = Text::with_text_style(&prediction.line_name, position, character_style, text_style)
+        let next = Text::with_text_style(&line_and_status, position, character_style, text_style)
             .draw(&mut display)
             .expect("Failed create line name text in display buffer");
 

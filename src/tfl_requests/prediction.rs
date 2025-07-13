@@ -14,7 +14,7 @@ use reqwless::request::Method;
 use serde_json_core::de::from_slice;
 
 use crate::string_utilities::extract_first_json_object;
-use crate::tfl_requests::response_models::TflApiPreciction;
+use crate::tfl_requests::response_models::Prediction;
 use crate::tfl_requests::{HTTP_PROXY, TFL_API_PRIMARY_KEY};
 
 // define the URL for the TFL API request
@@ -26,7 +26,7 @@ const PREDICTION_URL: &str =
 #[embassy_executor::task(pool_size = 1)]
 pub async fn get_prediction_task(
     stack: Stack<'static>,
-    tfl_api_prediction_channel_sender: Sender<'static, ThreadModeRawMutex, TflApiPreciction, 1>,
+    tfl_api_prediction_channel_sender: Sender<'static, ThreadModeRawMutex, Prediction, 1>,
 ) {
     let mut rng: RoscRng = RoscRng;
     loop {
@@ -77,7 +77,7 @@ pub async fn get_prediction_task(
         let mut searching = true;
         while searching {
             if let Some(json_object) = extract_first_json_object(&body) {
-                match from_slice::<TflApiPreciction>(&json_object) {
+                match from_slice::<Prediction>(&json_object) {
                     Ok((prediction, used)) => {
                         if prediction.platform_name.contains("Platform 1") {
                             info!("{}: Used {} bytes from the response body", function_name!(), used);

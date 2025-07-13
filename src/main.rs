@@ -37,9 +37,9 @@ pub use crate::display::update_display_task;
 mod tfl_requests;
 pub use crate::tfl_requests::prediction::get_prediction_task;
 pub use crate::tfl_requests::response_models::{
-    TflApiPreciction, TflApiPredictionTiming, TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE,
-    TFL_API_FIELD_STR_SIZE,
+    Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
 };
+pub use crate::tfl_requests::status::get_status_task;
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
@@ -112,12 +112,14 @@ async fn main(spawner: Spawner) {
     let epd_driver = EPD3in7::new(&mut spi_device, pin_busy, pin_data_cmd, pin_reset, &mut Delay, None)
         .expect("Display: eink initalize error"); // Force unwrap, as there is nothing that can be done if this errors out
 
-    // Spawn the task to update the display with predictions
-    static TFL_API_PREDICTION_CHANNEL: Channel<ThreadModeRawMutex, TflApiPreciction, 1> = Channel::new();
+    // Spawn the task to update the display with predictions and statuss
+    static TFL_API_PREDICTION_CHANNEL: Channel<ThreadModeRawMutex, Prediction, 1> = Channel::new();
+    static TFL_API_DISRUPTION_CHANNEL: Channel<ThreadModeRawMutex, Status, 1> = Channel::new();
     unwrap!(spawner.spawn(update_display_task(
         epd_driver,
         spi_device,
-        TFL_API_PREDICTION_CHANNEL.receiver()
+        TFL_API_PREDICTION_CHANNEL.receiver(),
+        TFL_API_DISRUPTION_CHANNEL.receiver()
     )));
 
     // Setup the CYW43 Wifi chip
@@ -194,9 +196,13 @@ async fn main(spawner: Spawner) {
     info!("{}: Starting TFL API request task...", function_name!());
     unwrap!(spawner.spawn(get_prediction_task(stack.clone(), TFL_API_PREDICTION_CHANNEL.sender())));
 
+    // Spawn the task to get statuss from the TFL API and send them to the display task
+    info!("{}: Starting TFL API request task...", function_name!());
+    unwrap!(spawner.spawn(get_status_task(stack.clone(), TFL_API_DISRUPTION_CHANNEL.sender())));
+
     loop {
         // Keep the main task alive
-        Timer::after_millis(1000).await;
+        Timer::after_secs(10).await;
         info!("{}: Main task is running...", function_name!());
     }
 }
