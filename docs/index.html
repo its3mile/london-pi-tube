@@ -20,7 +20,6 @@
         .container {
             max-width: 700px;
             margin: 0 auto;
-            background: #fff;
             padding: 2rem 1.5rem 4rem 1.5rem;
         }
 
@@ -125,15 +124,37 @@
         }
 
         .banner {
-            width: 100%;
             background: #2052bb;
             color: #fff;
             padding: 1.2em 0;
-            text-align: center;
             font-size: 1.3rem;
             font-weight: 600;
             letter-spacing: 0.03em;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        .banner-nav {
+            display: flex;
+            margin: 0 auto;
+            gap: 2em;
+            font-size: 0.8rem;
+            height: auto;
+            padding: 0;
+        }
+
+        .banner-nav>a {
+            color: #fff;
+            text-decoration: none;
+            padding: 0.2em 0.7em;
+            border-radius: 4px;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .banner-nav>a:hover,
+        .banner-nav>a:focus {
+            background: #fff;
+            color: #2052bb;
+            align-self: flex-start
         }
 
         .inline {
@@ -145,16 +166,24 @@
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap"
+        rel="stylesheet">
 </head>
 
 <body>
     <div class="banner">
         <h1>London Pi Tube</h1>
+        <div class="banner-nav">
+            <div class="banner-nav">
+                <a class="banner-nav" href="https://github.com/its3mile/london-pi-tube">source</a>
+            </div>
+        </div>
+
     </div>
     <div class="container">
         <div class="reference">
-            <p>This is a simple web page to demonstrate the use of <a href="https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#picow-technical-specification">Raspberry
+            <p>This is a simple web page to demonstrate the use of <a
+                    href="https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#picow-technical-specification">Raspberry
                     Pi Pico W</a> with <a href="https://www.waveshare.com/wiki/Pico-ePaper-3.7">
                     Waveshare Pico-ePaper 3.7" E-ink Display</a> to display the when the next train to the office
                 is.
@@ -203,7 +232,8 @@
             <div class="reference">
                 <ol>
                     <li>
-                        <a href="https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#picow-technical-specification">
+                        <a
+                            href="https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#picow-technical-specification">
                             https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#picow-technical-specification</a>
                     </li>
                 </ol>
@@ -279,7 +309,8 @@
                 <ol>
                     <li><a href="https://www.waveshare.com/wiki/Pico-ePaper-3.7">
                             https://www.waveshare.com/wiki/Pico-ePaper-3.7</a></li>
-                    <li><a href="https://www.waveshare.com/pico-epaper-3.7.htm">https://www.waveshare.com/pico-epaper-3.7.htm</a>
+                    <li><a
+                            href="https://www.waveshare.com/pico-epaper-3.7.htm">https://www.waveshare.com/pico-epaper-3.7.htm</a>
                     </li>
                     <li>
                         <a href="https://thepihut.com/products/3-7-e-paper-e-ink-display-for-raspberry-pi-pico-480x280">
@@ -373,12 +404,20 @@
                 <figcaption>Figure 5: SPI Communication Diagram</figcaption>
             </figure>
             <p>SPI Bus? SPI device? What's the difference?</p>
-            <p>The SPI bus is the communication pathway - or channel that allows data to be transferred between devices. Hense, many SPI devices (peripherals) can use the SPI bus to communicate with the Rapsberry Pi Pico (controller). The Infineon CYW43439 (802.11n wireless) chip also uses SPI for communication. Thankfully, the Raspberry Pi Pico W has two SPI busses available, so in this case both the display and the wireless peripherals can communicate at the same time.</p>
+            <p>The SPI bus is the communication pathway - or channel that allows data to be transferred between devices.
+                Hense, many SPI devices (peripherals) can use the SPI bus to communicate with the Rapsberry Pi Pico
+                (controller). The Infineon CYW43439 (802.11n wireless) chip also uses SPI for communication. Thankfully,
+                the Raspberry Pi Pico W has two SPI busses available, so in this case both the display and the wireless
+                peripherals can communicate at the same time.</p>
             <p>How does the bus know where to send the data if I have multiple devices?</p>
-            <p>There are a couple of ways that electronics handle serial communication. The SPI bus requires a chip select pin to be connected between the controller and peripheral, with it being held low for the duration of the communication. Multiple peripherals can share the same but, so long as there are enough output pins on the controller to allow for selection.</p>
+            <p>There are a couple of ways that electronics handle serial communication. The SPI bus requires a chip
+                select pin to be connected between the controller and peripheral, with it being held low for the
+                duration of the communication. Multiple peripherals can share the same but, so long as there are enough
+                output pins on the controller to allow for selection.</p>
             <div class="reference">
                 <ol>
-                    <li><a href="https://learn.sparkfun.com/tutorials/serial-peripheral-interface-spi/all">https://learn.sparkfun.com/tutorials/serial-peripheral-interface-spi/all</a>
+                    <li><a
+                            href="https://learn.sparkfun.com/tutorials/serial-peripheral-interface-spi/all">https://learn.sparkfun.com/tutorials/serial-peripheral-interface-spi/all</a>
                     </li>
             </div>
         </div>
