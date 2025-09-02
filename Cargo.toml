@@ -48,7 +48,7 @@ embedded-storage = { version = "0.3" }
 static_cell = "2.1"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
 log = "0.4"
-rand = { version = "0.9.1", default-features = false }
+rand = { version = "0.9.2", default-features = false }
 
 bt-hci = { version = "0.3.2", default-features = false, features = ["defmt"] }
 rp-pico = "0.9"
