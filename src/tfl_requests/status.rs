@@ -19,6 +19,7 @@ use serde_json_core::de::from_slice;
 use crate::string_utilities::{extract_first_json_object, is_empty_json_array};
 use crate::tfl_requests::response_models::{LineStatus, Status};
 use crate::tfl_requests::{HTTP_PROXY, TFL_API_PRIMARY_KEY};
+use crate::TFL_API_DISRUPTION_CHANNEL_SIZE;
 
 // define the URL for the TFL API request
 const TFL_LINE_ID_PARAM: &'static str = env!("TFL_LINE_ID_PARAM");
@@ -28,7 +29,7 @@ const DISRUPTION_URL: &str = formatcp!("{HTTP_PROXY}/Line/{TFL_LINE_ID_PARAM}/St
 #[embassy_executor::task(pool_size = 1)]
 pub async fn get_status_task(
     stack: Stack<'static>,
-    tfl_api_status_channel_sender: Sender<'static, ThreadModeRawMutex, Status, 1>,
+    tfl_api_status_channel_sender: Sender<'static, ThreadModeRawMutex, Status, TFL_API_DISRUPTION_CHANNEL_SIZE>,
 ) {
     let mut rng: RoscRng = RoscRng;
     loop {

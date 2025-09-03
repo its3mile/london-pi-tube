@@ -1,5 +1,6 @@
 use crate::string_utilities::{first_two_words, insert_linebreaks_inplace, split_iso8601_timestamp};
 use crate::tfl_requests::response_models::{Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE};
+use crate::{TFL_API_DISRUPTION_CHANNEL_SIZE, TFL_API_PREDICTION_CHANNEL_SIZE};
 use ::function_name::named;
 use core::fmt::Write;
 use defmt::info;
@@ -21,10 +22,9 @@ use embedded_graphics::{
 };
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
-use heapless::String;
+use heapless::{String, Vec};
 use panic_probe as _;
 use profont::*;
-
 pub type DisplayDriver = EPD3in7<
     ExclusiveDevice<Spi<'static, embassy_rp::peripherals::SPI1, spi::Blocking>, Output<'static>, Delay>,
     Input<'static>,
@@ -41,8 +41,8 @@ pub type DisplaySpiDevice =
 pub async fn update_display_task(
     mut epd_driver: DisplayDriver,
     mut spi_device: DisplaySpiDevice,
-    prediction_receiver: Receiver<'static, ThreadModeRawMutex, Prediction, 1>,
-    status_receiver: Receiver<'static, ThreadModeRawMutex, Status, 1>,
+    prediction_receiver: Receiver<'static, ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>,
+    status_receiver: Receiver<'static, ThreadModeRawMutex, Status, TFL_API_DISRUPTION_CHANNEL_SIZE>,
 ) {
     // Create a Display buffer to draw on, specific for this ePaper
     info!("{}: Initialising display buffer", function_name!());
@@ -71,13 +71,28 @@ pub async fn update_display_task(
     info!("{}: Display updated with splash and ready for use", function_name!());
 
     loop {
-        info!("{}: Waiting for prediction data on channel", function_name!());
-        let mut prediction: Prediction = prediction_receiver.receive().await;
-        info!("{}: Received prediction data on channel", function_name!());
-
+        // Wait for status data from the channel
         info!("{}: Waiting for status data on channel", function_name!());
         let status: Status = status_receiver.receive().await;
         info!("{}: Received status data on channel", function_name!());
+
+        info!("{}: Waiting for prediction data on channel", function_name!());
+        prediction_receiver.ready_to_receive().await;
+        let mut predictions = Vec::<Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>::new();
+        while match prediction_receiver.try_receive() {
+            Ok(prediction) => {
+                info!("{}: Received prediction data on channel", function_name!());
+                predictions.push(prediction).ok();
+                true
+            }
+            Err(_) => {
+                info!("{}: No additional prediction data on channel", function_name!());
+                false
+            }
+        } {}
+        // if predictions.sort_by_key(|p| p.time_to_station).is_err() {
+        //     error!("{}: Failed to sort predictions by time to station", function_name!());
+        // }
 
         // Prepare the display message
         // Clear the display
@@ -86,11 +101,11 @@ pub async fn update_display_task(
         // Format header
         // This is the line name, line status, station name and platform name
         let header_position = display.bounding_box().top_left + Point::new(10, 15);
-        let line_name = prediction.line_name.as_str();
+        let line_name = predictions[0].line_name.as_str();
         let line_status = status.line_statuses[0].status_severity_description.as_str();
-        let station_name = prediction.station_name.as_str();
-        let platform_name = prediction.platform_name.as_str();
-        let next = make_header(
+        let station_name = predictions[0].station_name.as_str();
+        let platform_name = predictions[0].platform_name.as_str();
+        let mut next = make_header(
             &mut display,
             header_position,
             line_name,
@@ -101,13 +116,18 @@ pub async fn update_display_task(
 
         // Format body
         // This is the actual prediction information
-        let next = next + Point::new(0, 15); // Add spacing after header
-        let _ = make_body_object(&mut display, next, &mut prediction);
+        for prediction in &mut predictions {
+            info!("{}: Processing prediction for display", function_name!());
+            info!("{}", prediction);
+            next = next + Point::new(0, 15); // Add spacing from previous text
+            next = make_body_object(&mut display, next, prediction);
+        }
 
         // Format footer
         // This is the last update time
         let footer_position = display.bounding_box().top_left + Point::new(10, display.size().height as i32 - 10);
-        make_footer(&mut display, footer_position, &prediction.timestamp);
+        let timestamp = predictions[0].timestamp.as_str();
+        make_footer(&mut display, footer_position, timestamp);
 
         // Perform display update
         epd_driver
@@ -210,6 +230,9 @@ fn make_body_object(display: &mut Display3in7, start: Point, prediction: &Predic
         &mut current_location,
         ((display.size().width / PROFONT_14_POINT.character_size.width) - 2) as usize,
     );
+    current_location
+        .push_str("\n")
+        .expect("Failed to format current location");
     let character_style = MonoTextStyle::new(&PROFONT_14_POINT, Color::Black);
     let text_style = TextStyleBuilder::new().alignment(Alignment::Left).build();
     Text::with_text_style(&current_location, next, character_style, text_style)

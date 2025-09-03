@@ -16,6 +16,7 @@ use serde_json_core::de::from_slice;
 use crate::string_utilities::extract_first_json_object;
 use crate::tfl_requests::response_models::Prediction;
 use crate::tfl_requests::{HTTP_PROXY, TFL_API_PRIMARY_KEY};
+use crate::TFL_API_PREDICTION_CHANNEL_SIZE;
 
 // define the URL for the TFL API request
 const TFL_STOPCODE_PARAM: &'static str = env!("TFL_STOPCODE_PARAM");
@@ -26,7 +27,7 @@ const PREDICTION_URL: &str =
 #[embassy_executor::task(pool_size = 1)]
 pub async fn get_prediction_task(
     stack: Stack<'static>,
-    tfl_api_prediction_channel_sender: Sender<'static, ThreadModeRawMutex, Prediction, 1>,
+    tfl_api_prediction_channel_sender: Sender<'static, ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>,
 ) {
     let mut rng: RoscRng = RoscRng;
     loop {
@@ -74,20 +75,20 @@ pub async fn get_prediction_task(
         };
 
         // 4. Process JSON objects in body
-        let mut searching = true;
-        while searching {
+        let mut predictions_queued: u32 = 0;
+        let mut deserialise_ok: bool = true;
+        while body.len() > 0 && predictions_queued < TFL_API_PREDICTION_CHANNEL_SIZE as u32 && deserialise_ok {
             if let Some(json_object) = extract_first_json_object(&body) {
                 match from_slice::<Prediction>(&json_object) {
                     Ok((prediction, used)) => {
                         if prediction.platform_name.contains("Platform 1") {
                             info!("{}: Used {} bytes from the response body", function_name!(), used);
-                            searching = false;
                             info!("{}: Sending preduction to display task data channel", function_name!());
                             tfl_api_prediction_channel_sender.send(prediction).await;
+                            predictions_queued += 1;
                             info!("{}: Sent body to display task data channel", function_name!());
-                        } else {
-                            body = &mut body[used..];
                         }
+                        body = &mut body[used..];
                     }
                     Err(e) => {
                         error!("{}: Failed to deserialise JSON: {}", function_name!(), e);
@@ -96,7 +97,7 @@ pub async fn get_prediction_task(
                             function_name!(),
                             str::from_utf8(json_object).unwrap_or("Invalid UTF-8")
                         );
-                        continue;
+                        deserialise_ok = false;
                     }
                 }
             } else {
@@ -106,7 +107,7 @@ pub async fn get_prediction_task(
                     function_name!(),
                     str::from_utf8(body).unwrap_or("Invalid UTF-8")
                 );
-                continue;
+                deserialise_ok = false;
             }
         }
 

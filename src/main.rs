@@ -75,6 +75,12 @@ assign_resources! {
     }
 }
 
+// Limited to 3 predictions to fit on the display
+const TFL_API_PREDICTION_CHANNEL_SIZE: usize = 3;
+
+// Limited to 1 status as only one line is monitored
+const TFL_API_DISRUPTION_CHANNEL_SIZE: usize = 1;
+
 #[named]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -113,7 +119,8 @@ async fn main(spawner: Spawner) {
         .expect("Display: eink initalize error"); // Force unwrap, as there is nothing that can be done if this errors out
 
     // Spawn the task to update the display with predictions and statuss
-    static TFL_API_PREDICTION_CHANNEL: Channel<ThreadModeRawMutex, Prediction, 1> = Channel::new();
+    static TFL_API_PREDICTION_CHANNEL: Channel<ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE> =
+        Channel::new();
     static TFL_API_DISRUPTION_CHANNEL: Channel<ThreadModeRawMutex, Status, 1> = Channel::new();
     unwrap!(spawner.spawn(update_display_task(
         epd_driver,
