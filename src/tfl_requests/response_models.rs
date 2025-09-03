@@ -47,6 +47,8 @@ pub struct Prediction {
     pub timing: PredictionTiming,
 }
 
+pub const ARRAY_MAX_SIZE_PREDICTION_MODEL: usize = 8;
+
 #[derive(Deserialize, Debug, Format)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
@@ -55,6 +57,8 @@ pub struct Status {
     pub line_statuses: Vec<LineStatus, 1>,
     // Incomplete implementation, as much of the data is not required
 }
+
+pub const ARRAY_MAX_SIZE_STATUS_MODEL: usize = 1;
 
 #[derive(Deserialize, Debug, Format)]
 #[serde(rename_all = "camelCase")]

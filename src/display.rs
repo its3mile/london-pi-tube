@@ -90,9 +90,6 @@ pub async fn update_display_task(
                 false
             }
         } {}
-        // if predictions.sort_by_key(|p| p.time_to_station).is_err() {
-        //     error!("{}: Failed to sort predictions by time to station", function_name!());
-        // }
 
         // Prepare the display message
         // Clear the display
@@ -118,7 +115,7 @@ pub async fn update_display_task(
         // This is the actual prediction information
         for prediction in &mut predictions {
             info!("{}: Processing prediction for display", function_name!());
-            info!("{}", prediction);
+            info!("{}: {}", function_name!(), prediction);
             next = next + Point::new(0, 15); // Add spacing from previous text
             next = make_body_object(&mut display, next, prediction);
         }
@@ -135,6 +132,11 @@ pub async fn update_display_task(
             .expect("Failed to update display with prediction");
 
         info!("{}: Display updated with prediction", function_name!());
+
+        // Clear the channels to prepare for next update
+        info!("{}: Clearing data channels", function_name!());
+        prediction_receiver.clear();
+        status_receiver.clear();
     }
 }
 

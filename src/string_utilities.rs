@@ -35,41 +35,6 @@ pub fn insert_linebreaks_inplace<const N: usize>(s: &mut heapless::String<N>, ma
     }
 }
 
-pub fn extract_first_json_object(body: &[u8]) -> Option<&[u8]> {
-    let mut start = None;
-    let mut end = None;
-    let mut brace_count = 0;
-
-    for (i, &b) in body.iter().enumerate() {
-        if b == b'{' {
-            if start.is_none() {
-                start = Some(i);
-            }
-            brace_count += 1;
-        }
-        if b == b'}' && start.is_some() {
-            brace_count -= 1;
-            if brace_count == 0 {
-                end = Some(i);
-                break;
-            }
-        }
-    }
-
-    match (start, end) {
-        (Some(s), Some(e)) => Some(&body[s..=e]), // inclusive of the closing brace
-        _ => None,
-    }
-}
-
-pub fn is_empty_json_array(body: &[u8]) -> bool {
-    if body.len() == 2 && body[0] == b'[' && body[1] == b']' {
-        true
-    } else {
-        false
-    }
-}
-
 pub fn first_two_words(s: &str) -> &str {
     let mut space_count = 0;
     for (i, c) in s.char_indices() {

@@ -10,14 +10,12 @@ use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Sender;
 use embassy_time::Timer;
-use heapless::{String, Vec};
+use heapless::Vec;
 use panic_probe as _;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
-use serde_json_core::de::from_slice;
 
-use crate::string_utilities::{extract_first_json_object, is_empty_json_array};
-use crate::tfl_requests::response_models::{LineStatus, Status};
+use crate::tfl_requests::response_models::{Status, ARRAY_MAX_SIZE_STATUS_MODEL};
 use crate::tfl_requests::{HTTP_PROXY, TFL_API_PRIMARY_KEY};
 use crate::TFL_API_DISRUPTION_CHANNEL_SIZE;
 
@@ -77,50 +75,25 @@ pub async fn get_status_task(
         };
 
         // 4. Process JSON objects in body
-        if is_empty_json_array(&body) {
-            info!("{}: Empty JSON array received, line status good", function_name!());
-            let line_status = LineStatus {
-                _type: String::new(),
-                status_severity_description: String::try_from("Good").expect(""),
-            };
-            let mut status = Status {
-                _type: String::new(),
-                line_statuses: Vec::new(),
-            };
-            let _ = status.line_statuses.push(line_status);
-            info!("{}: status {}", function_name!(), status);
-            info!(
-                "{}: This status is assmued as the API returned a empty array",
-                function_name!()
-            );
-            tfl_api_status_channel_sender.send(status).await;
-            info!("{}: Sent body to display task data channel", function_name!());
-        } else if let Some(json_object) = extract_first_json_object(body) {
-            match from_slice::<Status>(&json_object) {
-                Ok((status, used)) => {
-                    info!("{}: status {}", function_name!(), status);
-                    info!("{}: Used {} bytes from the response body", function_name!(), used);
+        match serde_json_core::de::from_slice::<Vec<Status, ARRAY_MAX_SIZE_STATUS_MODEL>>(&body) {
+            Ok((mut statuses, used)) => {
+                info!("{}: Used {} bytes from the response body", function_name!(), used);
+                if !tfl_api_status_channel_sender.is_full() {
+                    info!("{}: Sending status to display task data channel", function_name!());
+                    let status = statuses.pop().expect("At least one status should be present");
                     tfl_api_status_channel_sender.send(status).await;
                     info!("{}: Sent body to display task data channel", function_name!());
                 }
-                Err(e) => {
-                    error!("{}: Failed to deserialise JSON: {}", function_name!(), e);
-                    error!(
-                        "{}: JSON: {}",
-                        function_name!(),
-                        str::from_utf8(body).unwrap_or("Invalid UTF-8")
-                    );
-                    continue;
-                }
             }
-        } else {
-            error!("{}: Could not extract JSON object from body", function_name!());
-            error!(
-                "{}: UTF8: {}",
-                function_name!(),
-                str::from_utf8(body).unwrap_or("Invalid UTF-8")
-            );
-            continue;
+            Err(e) => {
+                error!("{}: Failed to deserialise JSON: {}", function_name!(), e);
+                error!(
+                    "{}: JSON: {}",
+                    function_name!(),
+                    str::from_utf8(body).unwrap_or("Invalid UTF-8")
+                );
+                continue;
+            }
         }
 
         // Sleep for a while before the starting requests

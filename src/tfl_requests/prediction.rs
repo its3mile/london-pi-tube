@@ -9,12 +9,12 @@ use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Sender;
 use embassy_time::Timer;
+use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
-use serde_json_core::de::from_slice;
+use serde_json_core;
 
-use crate::string_utilities::extract_first_json_object;
-use crate::tfl_requests::response_models::Prediction;
+use crate::tfl_requests::response_models::{Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL};
 use crate::tfl_requests::{HTTP_PROXY, TFL_API_PRIMARY_KEY};
 use crate::TFL_API_PREDICTION_CHANNEL_SIZE;
 
@@ -66,7 +66,7 @@ pub async fn get_prediction_task(
         };
 
         // 3. Read response body
-        let mut body = match response.body().read_to_end().await {
+        let body = match response.body().read_to_end().await {
             Ok(body) => body,
             Err(_) => {
                 error!("{}: Failed to read response body", function_name!());
@@ -75,39 +75,26 @@ pub async fn get_prediction_task(
         };
 
         // 4. Process JSON objects in body
-        let mut predictions_queued: u32 = 0;
-        let mut deserialise_ok: bool = true;
-        while body.len() > 0 && predictions_queued < TFL_API_PREDICTION_CHANNEL_SIZE as u32 && deserialise_ok {
-            if let Some(json_object) = extract_first_json_object(&body) {
-                match from_slice::<Prediction>(&json_object) {
-                    Ok((prediction, used)) => {
-                        if prediction.platform_name.contains("Platform 1") {
-                            info!("{}: Used {} bytes from the response body", function_name!(), used);
-                            info!("{}: Sending preduction to display task data channel", function_name!());
-                            tfl_api_prediction_channel_sender.send(prediction).await;
-                            predictions_queued += 1;
-                            info!("{}: Sent body to display task data channel", function_name!());
-                        }
-                        body = &mut body[used..];
-                    }
-                    Err(e) => {
-                        error!("{}: Failed to deserialise JSON: {}", function_name!(), e);
-                        error!(
-                            "{}: JSON: {}",
-                            function_name!(),
-                            str::from_utf8(json_object).unwrap_or("Invalid UTF-8")
-                        );
-                        deserialise_ok = false;
+        match serde_json_core::de::from_slice::<Vec<Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL>>(&body) {
+            Ok((predictions, used)) => {
+                info!("{}: Used {} bytes from the response body", function_name!(), used);
+                // Send predictions to display task data channel
+                for prediction in predictions {
+                    // Only send predictions for specific platform of interest if the channel is not full
+                    if prediction.platform_name.contains("Platform 1") && !tfl_api_prediction_channel_sender.is_full() {
+                        info!("{}: Sending predictions to display task data channel", function_name!());
+                        tfl_api_prediction_channel_sender.send(prediction).await;
+                        info!("{}: Sent body to display task data channel", function_name!());
                     }
                 }
-            } else {
-                error!("{}: Could not extract JSON object from body", function_name!());
+            }
+            Err(e) => {
+                error!("{}: Failed to deserialise JSON: {}", function_name!(), e);
                 error!(
-                    "{}: UTF8: {}",
+                    "{}: JSON: {}",
                     function_name!(),
                     str::from_utf8(body).unwrap_or("Invalid UTF-8")
                 );
-                deserialise_ok = false;
             }
         }
 

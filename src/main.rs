@@ -29,7 +29,7 @@ use panic_probe as _;
 use static_cell::StaticCell;
 
 mod string_utilities;
-pub use crate::string_utilities::{extract_first_json_object, first_two_words, insert_linebreaks_inplace};
+pub use crate::string_utilities::{first_two_words, insert_linebreaks_inplace};
 
 mod display;
 pub use crate::display::update_display_task;
