@@ -82,3 +82,17 @@ pub fn first_two_words(s: &str) -> &str {
     }
     s
 }
+
+pub fn split_iso8601_timestamp(s: &str) -> (&str, &str) {
+    let date_end = match s.find('T') {
+        Some(i) => i,
+        None => s.len(),
+    };
+    let time_end_wo_frac = match s.find('.') {
+        Some(i) => i,
+        None => s.len(),
+    };
+    let date = &s[..date_end];
+    let time = &s[date_end + 1..time_end_wo_frac];
+    (date, time)
+}
