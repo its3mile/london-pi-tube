@@ -112,7 +112,7 @@ async fn main(spawner: Spawner) {
         display_config,
     );
     let mut spi_device: ExclusiveDevice<Spi<'_, embassy_rp::peripherals::SPI1, spi::Blocking>, Output<'_>, Delay> =
-        ExclusiveDevice::new(spi_bus, pin_cs, Delay);
+        ExclusiveDevice::new(spi_bus, pin_cs, Delay).expect("Display: SPI initalise error");
 
     // Setup the EPD driver
     let epd_driver = EPD3in7::new(&mut spi_device, pin_busy, pin_data_cmd, pin_reset, &mut Delay, None)

@@ -202,6 +202,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "bt-hci"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a496a585c0e2e00195e558af18342f79afd67598d3edb32e78c006e606a31386"
+dependencies = [
+ "btuuid",
+ "defmt 1.0.1",
+ "embassy-sync 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "embedded-io",
+ "embedded-io-async",
+ "futures-intrusive",
+ "heapless 0.8.0",
+]
+
+[[package]]
+name = "btuuid"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0acfef8a77a02866e04f7e2ad3f4c7b32d575696c49c4bbad742b4aecb8e4a3"
+dependencies = [
+ "defmt 0.3.100",
+]
+
+[[package]]
 name = "buffered-io"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -378,7 +402,7 @@ dependencies = [
 name = "cyw43"
 version = "0.3.0"
 dependencies = [
- "bt-hci",
+ "bt-hci 0.3.2",
  "cortex-m",
  "cortex-m-rt",
  "defmt 1.0.1",
@@ -851,9 +875,9 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal-bus"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57b4e6ede84339ebdb418cd986e6320a34b017cdf99b5cc3efceec6450b06886"
+checksum = "513e0b3a8fb7d3013a8ae17a834283f170deaf7d0eeab0a7c1a36ad4dd356d22"
 dependencies = [
  "critical-section",
  "embedded-hal 1.0.0",
@@ -1326,6 +1350,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapless"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
+dependencies = [
+ "defmt 1.0.1",
+ "hash32 0.3.1",
+ "serde",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1472,7 +1508,7 @@ name = "london-pi-tube"
 version = "0.1.0"
 dependencies = [
  "assign-resources",
- "bt-hci",
+ "bt-hci 0.4.0",
  "byte-slice-cast",
  "const_format",
  "cortex-m",
@@ -1505,7 +1541,7 @@ dependencies = [
  "fixed-macro",
  "fugit",
  "function_name",
- "heapless 0.8.0",
+ "heapless 0.9.1",
  "log",
  "mipidsi",
  "panic-probe",
