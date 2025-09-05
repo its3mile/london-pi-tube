@@ -30,7 +30,20 @@ pub async fn get_status_task(
     tfl_api_status_channel_sender: Sender<'static, ThreadModeRawMutex, Status, TFL_API_DISRUPTION_CHANNEL_SIZE>,
 ) {
     let mut rng: RoscRng = RoscRng;
+    let mut sleep_this_cycle: bool = false;
     loop {
+        // Sleep for a while before the starting requests
+        // N.B this is performed at the top of the loop, to ensure any allocated resources are dropped before sleeping
+        if sleep_this_cycle {
+            let query_delay_secs: u64 = option_env!("QUERY_DELAY").and_then(|s| s.parse().ok()).unwrap_or(30);
+            info!(
+                "{}: Waiting for {} seconds before making the request...",
+                function_name!(),
+                query_delay_secs
+            );
+            Timer::after_secs(query_delay_secs).await;
+        }
+
         // Create the HTTP client and DNS client
         info!("{}: Creating HTTP client and DNS client", function_name!());
         let mut rx_buffer: [u8; 8192] = [0u8; 8192];
@@ -95,14 +108,6 @@ pub async fn get_status_task(
                 continue;
             }
         }
-
-        // Sleep for a while before the starting requests
-        let query_delay_secs: u64 = option_env!("QUERY_DELAY").and_then(|s| s.parse().ok()).unwrap_or(30);
-        info!(
-            "{}: Waiting for {} seconds before making the request...",
-            function_name!(),
-            query_delay_secs
-        );
-        Timer::after_secs(query_delay_secs).await;
+        sleep_this_cycle = true;
     }
 }
