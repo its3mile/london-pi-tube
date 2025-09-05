@@ -202,14 +202,16 @@ async fn main(spawner: Spawner) {
     // Spawn the task to get predictions from the TFL API and send them to the display task
     info!("{}: Starting TFL API request task...", function_name!());
     unwrap!(spawner.spawn(get_prediction_task(stack.clone(), TFL_API_PREDICTION_CHANNEL.sender())));
+    Timer::after_millis(500).await;
 
     // Spawn the task to get statuss from the TFL API and send them to the display task
     info!("{}: Starting TFL API request task...", function_name!());
     unwrap!(spawner.spawn(get_status_task(stack.clone(), TFL_API_DISRUPTION_CHANNEL.sender())));
+    Timer::after_millis(500).await;
 
     loop {
         // Keep the main task alive
-        Timer::after_secs(10).await;
+        Timer::after_secs(59).await;
         info!("{}: Main task is running...", function_name!());
     }
 }
