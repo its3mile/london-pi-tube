@@ -35,9 +35,10 @@ mod display;
 pub use crate::display::update_display_task;
 
 mod tfl_requests;
+pub use crate::tfl_requests::crowding::get_crowding_task;
 pub use crate::tfl_requests::prediction::get_prediction_task;
 pub use crate::tfl_requests::response_models::{
-    Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
+    Crowding, Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
 };
 pub use crate::tfl_requests::status::get_status_task;
 
@@ -81,6 +82,9 @@ const TFL_API_PREDICTION_CHANNEL_SIZE: usize = 3;
 // Limited to 1 status as only one line is monitored
 const TFL_API_DISRUPTION_CHANNEL_SIZE: usize = 1;
 
+// Limited to 1 status as only one station is monitored
+const TFL_API_CROWDING_CHANNEL_SIZE: usize = 1;
+
 #[named]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -122,12 +126,15 @@ async fn main(spawner: Spawner) {
     static TFL_API_PREDICTION_CHANNEL: Channel<ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE> =
         Channel::new();
     static TFL_API_DISRUPTION_CHANNEL: Channel<ThreadModeRawMutex, Status, 1> = Channel::new();
+    static TFL_API_CROWDING_CHANNEL: Channel<ThreadModeRawMutex, Crowding, 1> = Channel::new();
     unwrap!(spawner.spawn(update_display_task(
         epd_driver,
         spi_device,
         TFL_API_PREDICTION_CHANNEL.receiver(),
-        TFL_API_DISRUPTION_CHANNEL.receiver()
+        TFL_API_DISRUPTION_CHANNEL.receiver(),
+        TFL_API_CROWDING_CHANNEL.receiver()
     )));
+    Timer::after_millis(500).await;
 
     // Setup the CYW43 Wifi chip
     info!("{}: Initialising CYW43 Wifi chip...", function_name!());
@@ -202,14 +209,21 @@ async fn main(spawner: Spawner) {
     // Spawn the task to get predictions from the TFL API and send them to the display task
     info!("{}: Starting TFL API request task...", function_name!());
     unwrap!(spawner.spawn(get_prediction_task(stack.clone(), TFL_API_PREDICTION_CHANNEL.sender())));
+    Timer::after_millis(500).await;
 
-    // Spawn the task to get statuss from the TFL API and send them to the display task
+    // Spawn the task to get statuses from the TFL API and send them to the display task
     info!("{}: Starting TFL API request task...", function_name!());
     unwrap!(spawner.spawn(get_status_task(stack.clone(), TFL_API_DISRUPTION_CHANNEL.sender())));
+    Timer::after_secs(500).await;
+
+    // Spawn the task to get crowding from the TFL API and send them to the display task
+    info!("{}: Starting TFL API request task...", function_name!());
+    unwrap!(spawner.spawn(get_crowding_task(stack.clone(), TFL_API_CROWDING_CHANNEL.sender())));
+    Timer::after_secs(500).await;
 
     loop {
         // Keep the main task alive
-        Timer::after_secs(10).await;
+        Timer::after_secs(59).await;
         info!("{}: Main task is running...", function_name!());
     }
 }

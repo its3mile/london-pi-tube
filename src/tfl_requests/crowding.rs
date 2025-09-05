@@ -2,6 +2,7 @@ use ::function_name::named;
 use const_format::formatcp;
 use core::str;
 use defmt::{error, info};
+use defmt_rtt as _;
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_net::Stack;
@@ -9,28 +10,22 @@ use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Sender;
 use embassy_time::Timer;
-use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
-use serde_json_core;
 
-use crate::tfl_requests::response_models::{Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL};
+use crate::tfl_requests::response_models::Crowding;
 use crate::tfl_requests::{HTTP_PROXY, TFL_API_PRIMARY_KEY};
-use crate::TFL_API_PREDICTION_CHANNEL_SIZE;
+use crate::TFL_API_CROWDING_CHANNEL_SIZE;
 
 // define the URL for the TFL API request
-const TFL_STOPCODE_PARAM: &'static str = env!("TFL_STOPCODE_PARAM");
-const PREDICTION_URL: &str =
-    formatcp!("{HTTP_PROXY}/StopPoint/{TFL_STOPCODE_PARAM}/Arrivals?api_key={TFL_API_PRIMARY_KEY}");
-
-// define the platform name of interest
-const TFL_PLATFORM_NAME_PARAM: &'static str = env!("TFL_PLATFORM_NAME_PARAM");
+const TFL_LINE_ID_PARAM: &'static str = env!("TFL_LINE_ID_PARAM");
+const CROWDING_URL: &str = formatcp!("{HTTP_PROXY}/Crowding/{TFL_LINE_ID_PARAM}/Live?api_key={TFL_API_PRIMARY_KEY}");
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
-pub async fn get_prediction_task(
+pub async fn get_crowding_task(
     stack: Stack<'static>,
-    tfl_api_prediction_channel_sender: Sender<'static, ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>,
+    tfl_api_crowding_channel_sender: Sender<'static, ThreadModeRawMutex, Crowding, TFL_API_CROWDING_CHANNEL_SIZE>,
 ) {
     let mut rng: RoscRng = RoscRng;
     let mut sleep_this_cycle: bool = false;
@@ -61,10 +56,10 @@ pub async fn get_prediction_task(
         let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
 
         // Make the HTTP request to the TFL API
-        info!("{}: connecting to {}", function_name!(), &PREDICTION_URL);
+        info!("{}: connecting to {}", function_name!(), &CROWDING_URL);
 
         // 1. Make HTTP request
-        let mut request = match http_client.request(Method::GET, &PREDICTION_URL).await {
+        let mut request = match http_client.request(Method::GET, &CROWDING_URL).await {
             Ok(req) => req,
             Err(e) => {
                 error!("{}: Failed to make HTTP request: {}", function_name!(), e);
@@ -91,32 +86,13 @@ pub async fn get_prediction_task(
         };
 
         // 4. Process JSON objects in body
-        match serde_json_core::de::from_slice::<Vec<Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL>>(&body) {
-            Ok((mut predictions, used)) => {
+        match serde_json_core::de::from_slice::<Crowding>(&body) {
+            Ok((crowding, used)) => {
                 info!("{}: Used {} bytes from the response body", function_name!(), used);
-
-                // Retain only predictions for the platform of interest
-                predictions.retain(|p| p.platform_name.contains(TFL_PLATFORM_NAME_PARAM));
-
-                // Limit number of predictions to channel capacity
-                predictions.truncate(tfl_api_prediction_channel_sender.free_capacity());
-
-                // Check if there are any predictions for the platform of interest
-                if predictions.is_empty() {
-                    info!(
-                        "{}: No predictions found for platform {}",
-                        function_name!(),
-                        TFL_PLATFORM_NAME_PARAM
-                    );
-                } else {
-                    predictions.sort_unstable_by_key(|p| p.time_to_station);
-
-                    // Send predictions to display task data channel
-                    for prediction in predictions {
-                        info!("{}: Sending predictions to display task data channel", function_name!());
-                        tfl_api_prediction_channel_sender.send(prediction).await;
-                        info!("{}: Sent body to display task data channel", function_name!());
-                    }
+                if !tfl_api_crowding_channel_sender.is_full() {
+                    info!("{}: Sending crowding to display task data channel", function_name!());
+                    tfl_api_crowding_channel_sender.send(crowding).await;
+                    info!("{}: Sent body to display task data channel", function_name!());
                 }
             }
             Err(e) => {
@@ -126,6 +102,7 @@ pub async fn get_prediction_task(
                     function_name!(),
                     str::from_utf8(body).unwrap_or("Invalid UTF-8")
                 );
+                continue;
             }
         }
         sleep_this_cycle = true;

@@ -68,3 +68,13 @@ pub struct LineStatus {
     pub status_severity_description: String<TFL_API_FIELD_SHORT_STR_SIZE>,
     // Incomplete implementation, as much of the data is not required
 }
+
+#[derive(Deserialize, Debug, Format)]
+#[serde(rename_all = "camelCase")]
+pub struct Crowding {
+    #[serde(rename = "$type")]
+    pub _type: String<TFL_API_FIELD_LONG_STR_SIZE>,
+    pub data_available: bool,
+    pub percentage_of_baseline: f64,
+    // Incomplete implementation, as much of the data is not required
+}
