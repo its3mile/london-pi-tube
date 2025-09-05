@@ -1,4 +1,5 @@
 use ::function_name::named;
+use bt_hci::cmd::info;
 use const_format::formatcp;
 use core::str;
 use defmt::{error, info};
@@ -22,6 +23,9 @@ use crate::TFL_API_PREDICTION_CHANNEL_SIZE;
 const TFL_STOPCODE_PARAM: &'static str = env!("TFL_STOPCODE_PARAM");
 const PREDICTION_URL: &str =
     formatcp!("{HTTP_PROXY}/StopPoint/{TFL_STOPCODE_PARAM}/Arrivals?api_key={TFL_API_PRIMARY_KEY}");
+
+// define the platform name of interest
+const TFL_PLATFORM_NAME_PARAM: &'static str = env!("TFL_PLATFORM_NAME_PARAM");
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
@@ -76,12 +80,25 @@ pub async fn get_prediction_task(
 
         // 4. Process JSON objects in body
         match serde_json_core::de::from_slice::<Vec<Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL>>(&body) {
-            Ok((predictions, used)) => {
+            Ok((mut predictions, used)) => {
                 info!("{}: Used {} bytes from the response body", function_name!(), used);
-                // Send predictions to display task data channel
-                for prediction in predictions {
-                    // Only send predictions for specific platform of interest if the channel is not full
-                    if prediction.platform_name.contains("Platform 1") && !tfl_api_prediction_channel_sender.is_full() {
+
+                // Retain only predictions for the platform of interest
+                predictions.retain(|p| p.platform_name.contains(TFL_PLATFORM_NAME_PARAM));
+
+                // Limit number of predictions to channel capacity
+                predictions.truncate(tfl_api_prediction_channel_sender.free_capacity());
+
+                // Check if there are any predictions for the platform of interest
+                if predictions.is_empty() {
+                    info!(
+                        "{}: No predictions found for platform {}",
+                        function_name!(),
+                        TFL_PLATFORM_NAME_PARAM
+                    );
+                } else {
+                    // Send predictions to display task data channel
+                    for prediction in predictions {
                         info!("{}: Sending predictions to display task data channel", function_name!());
                         tfl_api_prediction_channel_sender.send(prediction).await;
                         info!("{}: Sent body to display task data channel", function_name!());
