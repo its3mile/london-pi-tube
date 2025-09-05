@@ -1,5 +1,4 @@
 use ::function_name::named;
-use bt_hci::cmd::info;
 use const_format::formatcp;
 use core::str;
 use defmt::{error, info};
