@@ -97,6 +97,8 @@ pub async fn get_prediction_task(
                         TFL_PLATFORM_NAME_PARAM
                     );
                 } else {
+                    predictions.sort_unstable_by_key(|p| p.time_to_station);
+
                     // Send predictions to display task data channel
                     for prediction in predictions {
                         info!("{}: Sending predictions to display task data channel", function_name!());
