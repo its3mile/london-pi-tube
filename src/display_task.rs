@@ -1,5 +1,8 @@
+use crate::api_requests::models::prediction::Prediction;
+use crate::api_requests::models::status::Status;
+
+use crate::api_requests::models::TFL_API_FIELD_LONG_STR_SIZE;
 use crate::string_utilities::{first_two_words, insert_linebreaks_inplace, split_iso8601_timestamp};
-use crate::tfl_requests::response_models::{Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE};
 use crate::{TFL_API_DISRUPTION_CHANNEL_SIZE, TFL_API_PREDICTION_CHANNEL_SIZE};
 use ::function_name::named;
 use core::fmt::Write;
@@ -38,7 +41,7 @@ pub type DisplaySpiDevice =
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
-pub async fn update_display_task(
+pub async fn display_task(
     mut epd_driver: DisplayDriver,
     mut spi_device: DisplaySpiDevice,
     prediction_receiver: Receiver<'static, ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>,
@@ -75,7 +78,9 @@ pub async fn update_display_task(
         info!("{}: Waiting for status data on channel", function_name!());
         let status: Status = status_receiver.receive().await;
         info!("{}: Received status data on channel", function_name!());
+        info!("{}: {}", function_name!(), status);
 
+        // Wait for prediction data from the channel
         info!("{}: Waiting for prediction data on channel", function_name!());
         prediction_receiver.ready_to_receive().await;
         let mut predictions = Vec::<Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>::new();
@@ -137,6 +142,7 @@ pub async fn update_display_task(
         info!("{}: Clearing data channels", function_name!());
         prediction_receiver.clear();
         status_receiver.clear();
+        info!("{}: Data channels cleared", function_name!());
     }
 }
 
@@ -166,6 +172,7 @@ fn make_header(
         "{} Line - {}\n{}\n{}\n",
         line_name, line_status, station_name, platform_name
     );
+
     let character_style = MonoTextStyle::new(&PROFONT_14_POINT, Color::Black);
     let text_style = TextStyleBuilder::new().alignment(Alignment::Left).build();
     let position = start;

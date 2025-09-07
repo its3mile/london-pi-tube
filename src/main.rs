@@ -29,17 +29,15 @@ use panic_probe as _;
 use static_cell::StaticCell;
 
 mod string_utilities;
+use crate::api_requests::request_task::request_task;
+use crate::display_task::display_task;
 pub use crate::string_utilities::{first_two_words, insert_linebreaks_inplace};
 
-mod display;
-pub use crate::display::update_display_task;
+mod api_requests;
+mod display_task;
 
-mod tfl_requests;
-pub use crate::tfl_requests::prediction::get_prediction_task;
-pub use crate::tfl_requests::response_models::{
-    Prediction, Status, TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
-};
-pub use crate::tfl_requests::status::get_status_task;
+use crate::api_requests::models::prediction::Prediction;
+use crate::api_requests::models::status::Status;
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
@@ -121,12 +119,13 @@ async fn main(spawner: Spawner) {
     // Spawn the task to update the display with predictions and statuss
     static TFL_API_PREDICTION_CHANNEL: Channel<ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE> =
         Channel::new();
-    static TFL_API_DISRUPTION_CHANNEL: Channel<ThreadModeRawMutex, Status, 1> = Channel::new();
-    unwrap!(spawner.spawn(update_display_task(
+    static TFL_API_DISRUPTION_CHANNEL: Channel<ThreadModeRawMutex, Status, TFL_API_DISRUPTION_CHANNEL_SIZE> =
+        Channel::new();
+    unwrap!(spawner.spawn(display_task(
         epd_driver,
         spi_device,
         TFL_API_PREDICTION_CHANNEL.receiver(),
-        TFL_API_DISRUPTION_CHANNEL.receiver()
+        TFL_API_DISRUPTION_CHANNEL.receiver(),
     )));
 
     // Setup the CYW43 Wifi chip
@@ -201,13 +200,11 @@ async fn main(spawner: Spawner) {
 
     // Spawn the task to get predictions from the TFL API and send them to the display task
     info!("{}: Starting TFL API request task...", function_name!());
-    unwrap!(spawner.spawn(get_prediction_task(stack.clone(), TFL_API_PREDICTION_CHANNEL.sender())));
-    Timer::after_millis(500).await;
-
-    // Spawn the task to get statuss from the TFL API and send them to the display task
-    info!("{}: Starting TFL API request task...", function_name!());
-    unwrap!(spawner.spawn(get_status_task(stack.clone(), TFL_API_DISRUPTION_CHANNEL.sender())));
-    Timer::after_millis(500).await;
+    unwrap!(spawner.spawn(request_task(
+        stack.clone(),
+        TFL_API_PREDICTION_CHANNEL.sender(),
+        TFL_API_DISRUPTION_CHANNEL.sender(),
+    )));
 
     loop {
         // Keep the main task alive
