@@ -11,6 +11,7 @@ use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 
 use crate::api_requests::*;
 
+use crate::TFL_API_CROWDING_CHANNEL_SIZE;
 use crate::TFL_API_DISRUPTION_CHANNEL_SIZE;
 use crate::TFL_API_PREDICTION_CHANNEL_SIZE;
 
@@ -29,6 +30,12 @@ pub async fn request_task(
         ThreadModeRawMutex,
         models::status::Status,
         TFL_API_DISRUPTION_CHANNEL_SIZE,
+    >,
+    tfl_api_crowding_channel_sender: Sender<
+        'static,
+        ThreadModeRawMutex,
+        models::crowding::Crowding,
+        TFL_API_CROWDING_CHANNEL_SIZE,
     >,
 ) {
     let mut rng: RoscRng = RoscRng;
@@ -66,6 +73,15 @@ pub async fn request_task(
             if !tfl_api_status_channel_sender.is_full() {
                 info!("{}: Sending status to display task data channel", function_name!());
                 tfl_api_status_channel_sender.send(status).await;
+                info!("{}: Sent body to display task data channel", function_name!());
+            }
+        }
+
+        // Request station crowding information
+        if let Some(crowding) = request_crowding::request_crowding(&mut http_client, &mut rx_buffer).await {
+            if !tfl_api_crowding_channel_sender.is_full() {
+                info!("{}: Sending crowding to display task data channel", function_name!());
+                tfl_api_crowding_channel_sender.send(crowding).await;
                 info!("{}: Sent body to display task data channel", function_name!());
             }
         }

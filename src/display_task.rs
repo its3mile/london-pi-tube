@@ -1,9 +1,10 @@
+use crate::api_requests::models::crowding::Crowding;
 use crate::api_requests::models::prediction::Prediction;
 use crate::api_requests::models::status::Status;
 
 use crate::api_requests::models::TFL_API_FIELD_LONG_STR_SIZE;
 use crate::string_utilities::{first_two_words, insert_linebreaks_inplace, split_iso8601_timestamp};
-use crate::{TFL_API_DISRUPTION_CHANNEL_SIZE, TFL_API_PREDICTION_CHANNEL_SIZE};
+use crate::{TFL_API_CROWDING_CHANNEL_SIZE, TFL_API_DISRUPTION_CHANNEL_SIZE, TFL_API_PREDICTION_CHANNEL_SIZE};
 use ::function_name::named;
 use core::fmt::Write;
 use defmt::info;
@@ -36,6 +37,8 @@ pub type DisplayDriver = EPD3in7<
     Delay,
 >;
 
+use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
+
 pub type DisplaySpiDevice =
     ExclusiveDevice<Spi<'static, embassy_rp::peripherals::SPI1, spi::Blocking>, Output<'static>, Delay>;
 
@@ -46,6 +49,7 @@ pub async fn display_task(
     mut spi_device: DisplaySpiDevice,
     prediction_receiver: Receiver<'static, ThreadModeRawMutex, Prediction, TFL_API_PREDICTION_CHANNEL_SIZE>,
     status_receiver: Receiver<'static, ThreadModeRawMutex, Status, TFL_API_DISRUPTION_CHANNEL_SIZE>,
+    crowding_receiver: Receiver<'static, ThreadModeRawMutex, Crowding, TFL_API_CROWDING_CHANNEL_SIZE>,
 ) {
     // Create a Display buffer to draw on, specific for this ePaper
     info!("{}: Initialising display buffer", function_name!());
@@ -79,6 +83,12 @@ pub async fn display_task(
         let status: Status = status_receiver.receive().await;
         info!("{}: Received status data on channel", function_name!());
         info!("{}: {}", function_name!(), status);
+
+        // Wait for crowding data from the channel
+        info!("{}: Waiting for crowding data on channel", function_name!());
+        let crowding: Crowding = crowding_receiver.receive().await;
+        info!("{}: Received crowding data on channel", function_name!());
+        info!("{}: {}", function_name!(), crowding);
 
         // Wait for prediction data from the channel
         info!("{}: Waiting for prediction data on channel", function_name!());
@@ -116,6 +126,15 @@ pub async fn display_task(
             platform_name,
         );
 
+        // Format crowding bar
+        if crowding.data_available {
+            info!("{}: Crowding data available", function_name!());
+            let pos = display.bounding_box().top_left + Point::new(display.size().width as i32 - 130, 15); // fixed position graphic
+            let _ = make_crowding_bar(&mut display, pos, crowding.percentage_of_baseline);
+        } else {
+            info!("{}: Crowding data not available", function_name!());
+        }
+
         // Format body
         // This is the actual prediction information
         for prediction in &mut predictions {
@@ -142,6 +161,7 @@ pub async fn display_task(
         info!("{}: Clearing data channels", function_name!());
         prediction_receiver.clear();
         status_receiver.clear();
+        crowding_receiver.clear();
         info!("{}: Data channels cleared", function_name!());
     }
 }
@@ -179,6 +199,36 @@ fn make_header(
     Text::with_text_style(&header, position, character_style, text_style)
         .draw(display)
         .expect("Failed create line name text in display buffer")
+}
+
+fn make_crowding_bar(display: &mut Display3in7, start: Point, crowding_percentage: f64) {
+    let no_fill_style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(2)
+        .build();
+
+    let fill_style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(2)
+        .fill_color(Color::Black)
+        .build();
+
+    // Define partially filled rectangle corners
+    let rectangle_width = 100.0;
+    let rectangle_height = 14;
+    let corner_1 = start;
+    let corner_2 = corner_1 + Point::new(rectangle_width as i32, rectangle_height);
+    let corner_3 = corner_1 + Point::new((rectangle_width * crowding_percentage) as i32, rectangle_height);
+
+    Rectangle::with_corners(corner_1, corner_2)
+        .into_styled(no_fill_style)
+        .draw(display)
+        .expect("Failed create rectangle in display buffer");
+
+    Rectangle::with_corners(corner_1, corner_3)
+        .into_styled(fill_style)
+        .draw(display)
+        .expect("Failed create rectangle in display buffer");
 }
 
 fn make_body_object(display: &mut Display3in7, start: Point, prediction: &Prediction) -> Point {
