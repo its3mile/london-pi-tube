@@ -21,8 +21,7 @@ use embassy_rp::spi::Spi;
 use embassy_rp::{peripherals, Peri};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::Delay;
-use embassy_time::Timer;
+use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
 use panic_probe as _;
@@ -214,9 +213,16 @@ async fn main(spawner: Spawner) {
         TFL_API_CROWDING_CHANNEL.sender()
     )));
 
+    let loop_delay = Duration::from_secs(59);
+    let blink_delay = Duration::from_millis(500);
     loop {
         // Keep the main task alive
-        Timer::after_secs(59).await;
+        Timer::after(loop_delay).await;
         info!("{}: Main task is running...", function_name!());
+
+        // Blink the onboard LED to show that the main task is alive
+        control.gpio_set(0, true).await;
+        Timer::after(blink_delay).await;
+        control.gpio_set(0, false).await;
     }
 }
