@@ -1,0 +1,72 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Pico SDK
+        run: |
+          sudo apt update
+          sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
+          mkdir -p  ~/pico
+          cd ~/pico/
+          git clone -b master https://github.com/raspberrypi/pico-sdk.git
+          cd pico-sdk
+          git submodule update --init
+          echo 'export PICO_SDK_PATH=$HOME/pico/pico-sdk' >> $GITHUB_PATH
+          echo "PICO_SDK_PATH=$HOME/pico/pico-sdk" >> $GITHUB_ENV
+
+      - name: Install Picotool
+        run: |
+          mkdir -p ~/builds
+          cd ~/builds
+          git clone https://github.com/raspberrypi/picotool
+          cd picotool
+          export PICO_SDK_PATH=$HOME/pico/pico-sdk
+          cmake .
+          make -j 4
+          sudo make install
+          sudo picotool version
+          
+      - name: Install Rust thumbv8m.main-none-eabihf Target
+        run: |
+          rustup target add thumbv8m.main-none-eabihf
+          
+      - name: Install probe-rs
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
+
+      - name: Build (release)
+        run: |
+          cargo build --release
+
+      - name: Create UF2 from ELF
+        run: |
+          sudo picotool uf2 convert \
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube2 -t elf \
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube2.uf2 -t uf2
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
+          files: |
+           target/thumbv8m.main-none-eabihf/release/london-pi-tube2
+           target/thumbv8m.main-none-eabihf/release/london-pi-tube2.uf2
