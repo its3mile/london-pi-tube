@@ -1,0 +1,9 @@
+{
+  "rust-analyzer.cargo.target": "thumbv8m.main-none-eabihf",
+  "rust-analyzer.check.allTargets": false,
+  "editor.formatOnSave": true,
+  "files.exclude": {
+    ".pico-rs": true,
+    "cyw43-firmware": true
+  }
+}
