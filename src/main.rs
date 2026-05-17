@@ -13,6 +13,10 @@ use gpio::{Level, Output};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+mod config;
+
+use config::WifiConfig;
+
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recommended to have these minimal entries.
 #[unsafe(link_section = ".bi_entries")]
@@ -80,6 +84,10 @@ async fn main(spawner: Spawner) {
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
+
+    let wifi_config = WifiConfig::new();
+    info!("ssid {}", wifi_config.ssid);
+    info!("password {}", wifi_config.password);
 
     let delay = Duration::from_secs(1);
     loop {
