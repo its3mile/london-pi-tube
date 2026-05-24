@@ -8,6 +8,7 @@ use cyw43::JoinOptions;
 use cyw43::aligned_bytes;
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::*;
+use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_net::{Config, StackResources};
 use embassy_rp::bind_interrupts;
@@ -24,9 +25,9 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::epd3in7::{Display3in7, EPD3in7};
 use epd_waveshare::prelude::{DisplayRotation, WaveshareDisplay};
 use static_cell::StaticCell;
-use {defmt_rtt as _, panic_probe as _};
 
 mod config;
+mod panic;
 
 use config::WifiConfig;
 
@@ -93,27 +94,25 @@ assign_resources! {
 #[named]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());
+    let p: embassy_rp::Peripherals = embassy_rp::init(Default::default());
     let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
 
     info!("{}: Starting main task...", function_name!());
-    let peripherals: embassy_rp::Peripherals = embassy_rp::init(Default::default());
-    let split_peripherals = split_resources!(peripherals);
+    let split_p = split_resources!(p);
 
     // Spawn the task to update the display with predictions
     info!("{}: Initialising display...", function_name!());
 
     // Setup display pins and SPI bus
-    let pin_reset: Output<'_> = Output::new(split_peripherals.display_resources.pin_12, Level::Low);
-    let pin_cs = Output::new(split_peripherals.display_resources.pin_9, Level::High);
-    let pin_data_cmd: Output<'_> =
-        Output::new(split_peripherals.display_resources.pin_8, Level::Low);
-    let pin_spi_sclk = split_peripherals.display_resources.pin_10;
-    let pin_spi_mosi = split_peripherals.display_resources.pin_11;
+    let pin_reset: Output<'_> = Output::new(split_p.display_resources.pin_12, Level::Low);
+    let pin_cs = Output::new(split_p.display_resources.pin_9, Level::High);
+    let pin_data_cmd: Output<'_> = Output::new(split_p.display_resources.pin_8, Level::Low);
+    let pin_spi_sclk = split_p.display_resources.pin_10;
+    let pin_spi_mosi = split_p.display_resources.pin_11;
     let pin_busy = Input::new(
-        split_peripherals.display_resources.pin_13,
+        split_p.display_resources.pin_13,
         embassy_rp::gpio::Pull::None,
     );
 
@@ -124,7 +123,7 @@ async fn main(spawner: Spawner) {
     display_config.polarity = spi::Polarity::IdleLow;
 
     let spi_bus = Spi::new_blocking_txonly(
-        split_peripherals.display_resources.spi1,
+        split_p.display_resources.spi1,
         pin_spi_sclk,
         pin_spi_mosi,
         display_config,
@@ -148,19 +147,19 @@ async fn main(spawner: Spawner) {
 
     // Setup the CYW43 Wifi chip
     info!("{}: Initialising CYW43 Wifi chip...", function_name!());
-    let pwr = Output::new(split_peripherals.network_resources.pin_23, Level::Low);
-    let cs = Output::new(split_peripherals.network_resources.pin_25, Level::High);
-    let mut pio = Pio::new(split_peripherals.network_resources.pio0, Irqs);
+    let pwr = Output::new(split_p.network_resources.pin_23, Level::Low);
+    let cs = Output::new(split_p.network_resources.pin_25, Level::High);
+    let mut pio = Pio::new(split_p.network_resources.pio0, Irqs);
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
         CHIP_SPECIFIC_CLOCK_DIVIDER,
         pio.irq0,
         cs,
-        split_peripherals.network_resources.pin_24,
-        split_peripherals.network_resources.pin_29,
-        embassy_rp::dma::Channel::new(split_peripherals.network_resources.dma_ch0, Irqs),
-        embassy_rp::dma::Channel::new(split_peripherals.network_resources.dma_ch1, Irqs),
+        split_p.network_resources.pin_24,
+        split_p.network_resources.pin_29,
+        embassy_rp::dma::Channel::new(split_p.network_resources.dma_ch0, Irqs),
+        embassy_rp::dma::Channel::new(split_p.network_resources.dma_ch1, Irqs),
     );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();

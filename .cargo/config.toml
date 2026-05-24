@@ -31,17 +31,21 @@ target = "thumbv8m.main-none-eabihf"
 #   have SIMD)
 linker = "flip-link"
 rustflags = [
-    "-C", "link-arg=--nmagic",
-    "-C", "link-arg=-Tlink.x",
-    "-C", "link-arg=-Tdefmt.x",
-    "-C", "no-vectorize-loops",
+    "-C",
+    "link-arg=--nmagic",
+    "-C",
+    "link-arg=-Tlink.x",
+    "-C",
+    "link-arg=-Tdefmt.x",
+    "-C",
+    "no-vectorize-loops",
 ]
 
 # Use picotool for loading.
 #
 # Load an elf, skipping unchanged flash sectors, verify it, and execute it
-runner = "picotool load -u -v -x -t elf"
-#runner = "probe-rs run --chip ${CHIP} --protocol swd"
+# runner = "picotool load -u -v -x -t elf"
+runner = "probe-rs run --chip ${CHIP} --protocol swd"
 
 # This is the hard-float ABI for Arm mode.
 #
@@ -59,17 +63,21 @@ runner = "picotool load -u -v -x -t elf"
 # * linker argument -Tdefmt.x also tells the linker to use `defmt.x` as a
 #   secondary linker script. This is required to make defmt_rtt work.
 rustflags = [
-    "-C", "link-arg=--nmagic",
-    "-C", "link-arg=-Tlink.x",
-    "-C", "link-arg=-Tdefmt.x",
-    "-C", "target-cpu=cortex-m33",
+    "-C",
+    "link-arg=--nmagic",
+    "-C",
+    "link-arg=-Tlink.x",
+    "-C",
+    "link-arg=-Tdefmt.x",
+    "-C",
+    "target-cpu=cortex-m33",
 ]
 
 # Use picotool for loading.
 #
 # Load an elf, skipping unchanged flash sectors, verify it, and execute it
-runner = "picotool load -u -v -x -t elf"
-#runner = "probe-rs run --chip ${CHIP} --protocol swd"
+# runner = "picotool load -u -v -x -t elf"
+runner = "probe-rs run --chip ${CHIP} --protocol swd"
 
 # This is the soft-float ABI for RISC-V mode.
 #
@@ -87,16 +95,20 @@ runner = "picotool load -u -v -x -t elf"
 # * linker argument -Tdefmt.x also tells the linker to use `defmt.x` as a
 #   secondary linker script. This is required to make defmt_rtt work.
 rustflags = [
-    "-C", "link-arg=--nmagic",
-    "-C", "link-arg=-Trp2350_riscv.x",
-    "-C", "link-arg=-Tdefmt.x",
+    "-C",
+    "link-arg=--nmagic",
+    "-C",
+    "link-arg=-Trp2350_riscv.x",
+    "-C",
+    "link-arg=-Tdefmt.x",
 ]
 
 # Use picotool for loading.
 #
 # Load an elf, skipping unchanged flash sectors, verify it, and execute it
-runner = "picotool load -u -v -x -t elf"
-#runner = "probe-rs run --chip ${CHIP} --protocol swd"
+# runner = "picotool load -u -v -x -t elf"
+runner = "probe-rs run --chip ${CHIP} --protocol swd"
 
 [env]
 DEFMT_LOG = "debug"
+DEFMT_RTT_BUFFER_SIZE = "1028"
