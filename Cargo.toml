@@ -85,7 +85,7 @@ log = "0.4"
 rand = { version = "0.10.1", default-features = false }
 
 bt-hci = { version = "0.8.1", default-features = false, features = ["defmt"] }
-epd-waveshare = "0.6.0"
+epd-waveshare = { git = "https://github.com/ducktec/epd-waveshare", rev = "0c3944c" } # Commit from fork with display sleep bugfix applied
 fugit = "0.4.0"
 const_format = "0.2.34"
 profont = "0.7.0"
