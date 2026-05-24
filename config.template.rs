@@ -1,5 +1,6 @@
 // IMPORTANT: Copy this file to config.rs (in the same directory as this file) and update with your real credentials
 // DO NOT commit config.rs to Git - it should be (already) in .gitignore
+use defmt::Format;
 
 // WiFi credentials
 pub const WIFI_SSID: &str = "your-ssid";

@@ -2,7 +2,6 @@
 #![no_main]
 #![allow(async_fn_in_trait)]
 
-#[allow(unused)] // FIXME: remove when done
 use ::function_name::named;
 use assign_resources::assign_resources;
 use cyw43::JoinOptions;
@@ -14,7 +13,7 @@ use embassy_net::{Config, StackResources};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::peripherals::{DMA_CH0, PIO0, SPI1};
+use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0, SPI1};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
@@ -52,12 +51,15 @@ const CHIP_SPECIFIC_CLOCK_DIVIDER: FixedU32<U8> = RM2_CLOCK_DIVIDER;
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>;
-});
+    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;});
 
 #[embassy_executor::task]
 async fn cyw43_task(
-    runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>>,
+    runner: cyw43::Runner<
+        'static,
+        cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>,
+        cyw43::Cyw43439,
+    >,
 ) -> ! {
     runner.run().await
 }
@@ -80,6 +82,7 @@ assign_resources! {
     network_resources: NetworkResources {
         pio0: PIO0,
         dma_ch0: DMA_CH0,
+        dma_ch1: DMA_CH1,
         pin_23: PIN_23,
         pin_24: PIN_24,
         pin_25: PIN_25,
@@ -91,11 +94,9 @@ assign_resources! {
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-    let fw: &cyw43::Aligned<cyw43::A4, [u8]> = aligned_bytes!("../cyw43-firmware/43439A0.bin");
-    let clm: &cyw43::Aligned<cyw43::A4, [u8]> =
-        aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
-    let nvram: &cyw43::Aligned<cyw43::A4, [u8]> =
-        aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
+    let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
+    let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
+    let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
 
     info!("{}: Starting main task...", function_name!());
     let peripherals: embassy_rp::Peripherals = embassy_rp::init(Default::default());
@@ -147,8 +148,6 @@ async fn main(spawner: Spawner) {
 
     // Setup the CYW43 Wifi chip
     info!("{}: Initialising CYW43 Wifi chip...", function_name!());
-    let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
-    let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
     let pwr = Output::new(split_peripherals.network_resources.pin_23, Level::Low);
     let cs = Output::new(split_peripherals.network_resources.pin_25, Level::High);
     let mut pio = Pio::new(split_peripherals.network_resources.pio0, Irqs);
@@ -161,12 +160,13 @@ async fn main(spawner: Spawner) {
         split_peripherals.network_resources.pin_24,
         split_peripherals.network_resources.pin_29,
         embassy_rp::dma::Channel::new(split_peripherals.network_resources.dma_ch0, Irqs),
+        embassy_rp::dma::Channel::new(split_peripherals.network_resources.dma_ch1, Irqs),
     );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw, nvram).await;
-    unwrap!(spawner.spawn(cyw43_task(runner)));
+    spawner.spawn(unwrap!(cyw43_task(runner)));
     debug!("{}: Here!", function_name!());
 
     control.init(clm).await;
@@ -189,7 +189,7 @@ async fn main(spawner: Spawner) {
         seed,
     );
 
-    unwrap!(spawner.spawn(net_task(runner)));
+    spawner.spawn(unwrap!(net_task(runner)));
     let wifi_config = WifiConfig::new();
     loop {
         match control
