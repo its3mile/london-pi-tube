@@ -20,7 +20,7 @@ use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
 
 pub const ARRAY_MAX_SIZE_PREDICTION_MODEL: usize = 6;
 
-#[derive(Deserialize, Debug, Format)]
+#[derive(Deserialize, Debug, Format, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Prediction {
     // #[serde(rename = "$type")]

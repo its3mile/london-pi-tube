@@ -3,7 +3,6 @@
 use ::function_name::named;
 use defmt::*;
 
-use embassy_time::Timer;
 use embedded_graphics::{prelude::*, primitives::PrimitiveStyle};
 use epd_waveshare::color::Color;
 use epd_waveshare::epd3in7::Display3in7;
@@ -21,6 +20,8 @@ use embassy_time::Delay;
 
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
+
+use crate::{NOTIFY, UPDATE};
 
 /// The main display task that handles displaying sensor data and connection status
 pub type DisplayDriver = EPD3in7<
@@ -61,9 +62,51 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
         function_name!()
     );
 
+    let styles = DisplayStyles::new();
+
     // Main update loop
     loop {
-        Timer::after_millis(100).await;
+        info!("{}: Wait for signal...", function_name!());
+        NOTIFY.wait().await;
+        info!(
+            "{}: Signal received! Preparing full screen refresh...",
+            function_name!()
+        );
+
+        // Acquire lock to read data update
+        let _current_data = {
+            let update = UPDATE.lock().await;
+            (*update).clone()
+        }; // Release lock
+
+        let _ = display
+            .clear(styles.colors.bg)
+            .map_err(|_| DisplayError::RenderingFailed);
+
+        info!("{}: Drawing update", function_name!());
+
+        let _ = styles
+            .title_font
+            .render_aligned(
+                "Hello World! I'm not implemented yet...",
+                Point::new(
+                    display.bounding_box().size.width as i32 / 2,
+                    display.bounding_box().size.height as i32 / 2,
+                ),
+                VerticalPosition::Baseline,
+                HorizontalAlignment::Center,
+                FontColor::Transparent(styles.colors.fg),
+                &mut display,
+            )
+            .map_err(|_| DisplayError::RenderingFailed);
+
+        info!("{}: Rendering update", function_name!());
+
+        epd_driver
+            .update_and_display_frame(&mut spi_device, &mut display.buffer(), &mut Delay)
+            .expect("Display: Failed to update display with update");
+
+        info!("{}: Finished rendering update", function_name!());
     }
 }
 
@@ -126,7 +169,7 @@ pub struct DisplayColors {
 }
 
 impl DisplayStyles {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         let colors = DisplayColors {
             bg: Color::White,
             fg: Color::Black,

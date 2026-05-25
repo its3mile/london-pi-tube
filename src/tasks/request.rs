@@ -19,6 +19,7 @@ use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_rp::clocks::RoscRng;
 use embassy_time::Timer;
+use embassy_time::{Duration, with_timeout};
 use heapless::String;
 use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
@@ -27,6 +28,7 @@ use reqwless::request::Method;
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
 use crate::models::prediction::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
+use crate::{NOTIFY, UPDATE};
 
 use static_cell::StaticCell;
 
@@ -53,7 +55,7 @@ pub async fn request_task(stack: Stack<'static>) {
         if sleep_this_cycle {
             let query_delay_secs: u64 = option_env!("QUERY_DELAY")
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(30);
+                .unwrap_or(5);
             info!(
                 "{}: Waiting for {} seconds before making the request...",
                 function_name!(),
@@ -80,9 +82,28 @@ pub async fn request_task(stack: Stack<'static>) {
         info!("{}: Making API request", function_name!());
 
         // Request station & platform arrival predictions
-        if let Some(predictions) = request_prediction(&mut http_client, rx_buffer).await {
-            for prediction in predictions {
-                info!("{}: Prediction: {}", function_name!(), prediction);
+        match with_timeout(
+            Duration::from_secs(10),
+            request_prediction(&mut http_client, rx_buffer),
+        )
+        .await
+        {
+            Ok(Some(predictions)) => {
+                info!("Successfully fetched predictions!");
+                // Lock and update state safely
+                {
+                    let mut update = UPDATE.lock().await;
+                    update.arrivals = predictions;
+                }
+                NOTIFY.signal(());
+            }
+            Ok(None) => {
+                error!("API returned an empty or unparsable payload");
+            }
+            Err(_) => {
+                error!("Network request timed out! Wi-Fi link might be unstable.");
+                // The loop will automatically clean up, hit the bottom,
+                // drop resources, and try again in 30 seconds.
             }
         }
 

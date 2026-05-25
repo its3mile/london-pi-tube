@@ -19,11 +19,15 @@ use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
 use embassy_rp::{Peri, peripherals};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Delay;
 use embassy_time::{Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::epd3in7::EPD3in7;
 use epd_waveshare::prelude::WaveshareDisplay;
+use heapless::Vec;
 use static_cell::StaticCell;
 
 mod config;
@@ -33,6 +37,7 @@ mod tasks;
 
 use config::WifiConfig;
 
+use crate::models::update::Update;
 use crate::tasks::display::display_task;
 use crate::tasks::request::request_task;
 
@@ -95,6 +100,25 @@ assign_resources! {
         pin_29: PIN_29,
     }
 }
+
+// Static for communication between tasks
+// This is prefered over channels and pubsub because:
+// - No copies - static lifetime and mutex ensures data is always shared without copying
+// - No channel update locks - channels act as queues, only the latest is ever needed,
+// even with a channel size of 0, data must be read before it can be replaced
+// - Slow display updates - full display updates take in the order of 3 seconds, there is no
+// scenario where a pubsub works as partial updates are not currently possible and data from
+// the API is unlikely to change in the interval of 30 seconds
+// - Request tasks waits - the request task should not wait for the display to finish reading
+// as the display should always display the latest data from the request task (no stale updates)
+static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
+    arrivals: Vec::new(),
+    last_updated_secs: 0,
+});
+
+// Atomic signal for the request task to emit, and the display task to consume
+// to know when there is new data to physically show.
+static NOTIFY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 #[named]
 #[embassy_executor::main]

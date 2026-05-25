@@ -22,6 +22,9 @@ impl WifiConfig {
     }
 }
 
+// Proxy info
+pub const HTTP_PROXY: &str = "https://api.tfl.gov.uk";
+
 // Proxy configuration
 #[derive(Clone, Copy, Format)]
 pub struct ProxyConfig {
