@@ -76,7 +76,7 @@ usbd-hid = "0.10.0"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
 embedded-hal-async = "1.0"
-embedded-hal-bus = { version = "0.3", features = ["async"] }
+embedded-hal-bus = { version = "0.3", features = ["async", "defmt-03"] }
 embedded-io-async = { version = "0.7.0", features = ["defmt"] }
 embedded-storage = { version = "0.3" }
 static_cell = "2.1"
@@ -89,6 +89,7 @@ epd-waveshare = { git = "https://github.com/ducktec/epd-waveshare", rev = "0c394
 fugit = "0.4.0"
 const_format = "0.2.34"
 profont = "0.7.0"
+u8g2-fonts = "0.7.2"
 function_name = "0.3.0"
 
 [patch.crates-io]

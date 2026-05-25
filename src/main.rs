@@ -13,8 +13,8 @@ use embassy_executor::Spawner;
 use embassy_net::{Config, StackResources};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
-use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0, SPI1};
+use embassy_rp::gpio::{Input, Level, Output};
+use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
@@ -22,14 +22,17 @@ use embassy_rp::{Peri, peripherals};
 use embassy_time::Delay;
 use embassy_time::{Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use epd_waveshare::epd3in7::{Display3in7, EPD3in7};
-use epd_waveshare::prelude::{DisplayRotation, WaveshareDisplay};
+use epd_waveshare::epd3in7::EPD3in7;
+use epd_waveshare::prelude::WaveshareDisplay;
 use static_cell::StaticCell;
 
 mod config;
 mod panic;
+mod tasks;
 
 use config::WifiConfig;
+
+use crate::tasks::display::display_task;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recommended to have these minimal entries.
@@ -94,13 +97,12 @@ assign_resources! {
 #[named]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    info!("{}: Starting main task...", function_name!());
     let p: embassy_rp::Peripherals = embassy_rp::init(Default::default());
+    let split_p = split_resources!(p);
     let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
-
-    info!("{}: Starting main task...", function_name!());
-    let split_p = split_resources!(p);
 
     // Spawn the task to update the display with predictions
     info!("{}: Initialising display...", function_name!());
@@ -115,13 +117,11 @@ async fn main(spawner: Spawner) {
         split_p.display_resources.pin_13,
         embassy_rp::gpio::Pull::None,
     );
-
     let mut display_config = spi::Config::default();
-    const DISPLAY_FREQ: u32 = 16_000_000;
+    const DISPLAY_FREQ: u32 = 4_000_000;
     display_config.frequency = DISPLAY_FREQ;
     display_config.phase = spi::Phase::CaptureOnFirstTransition;
     display_config.polarity = spi::Polarity::IdleLow;
-
     let spi_bus = Spi::new_blocking_txonly(
         split_p.display_resources.spi1,
         pin_spi_sclk,
@@ -133,7 +133,6 @@ async fn main(spawner: Spawner) {
         Output<'_>,
         Delay,
     > = ExclusiveDevice::new(spi_bus, pin_cs, Delay).expect("Display: SPI initalise error");
-
     // Setup the EPD driver
     let epd_driver = EPD3in7::new(
         &mut spi_device,
@@ -144,6 +143,12 @@ async fn main(spawner: Spawner) {
         None,
     )
     .expect("Display: eink initalise error"); // Force unwrap, as there is nothing that can be done if this errors out
+
+    // Spawn display task
+    spawner.spawn(unwrap!(display_task(epd_driver, spi_device)));
+
+    // Allow display task to run and show splash before continuing setup
+    Timer::after_millis(500).await;
 
     // Setup the CYW43 Wifi chip
     info!("{}: Initialising CYW43 Wifi chip...", function_name!());
@@ -166,7 +171,6 @@ async fn main(spawner: Spawner) {
     let state = STATE.init(cyw43::State::new());
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw, nvram).await;
     spawner.spawn(unwrap!(cyw43_task(runner)));
-    debug!("{}: Here!", function_name!());
 
     control.init(clm).await;
     control
@@ -222,7 +226,6 @@ async fn main(spawner: Spawner) {
     stack.wait_config_up().await;
     info!("{}: Stack is up!", function_name!());
 
-    // let loop_delay = Duration::from_secs(59);
     let blink_delay = Duration::from_millis(500);
     loop {
         // Keep the main task alive
