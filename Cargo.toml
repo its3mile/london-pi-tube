@@ -50,7 +50,7 @@ defmt-rtt = "1.0.0"
 fixed = "1.29.0"
 fixed-macro = "1.2"
 reqwless = { version = "0.14.0", default-features = false, features = [
-    "defmt",
+    "defmt", "embedded-tls"
 ] }
 serde = { version = "1.0.221", default-features = false, features = ["derive"] }
 serde-json-core = { version = "0.6.0", features = [
@@ -91,6 +91,10 @@ const_format = "0.2.34"
 profont = "0.7.0"
 u8g2-fonts = "0.7.2"
 function_name = "0.3.0"
+embedded-tls = { version = "0.18.0", default-features = false, features = [
+    "rustpki", # Required to parse and cross-check the server's certificate handshake
+] }
+der = { version = "0.8.0", default-features = false, features = ["derive", "oid", "time", "heapless"] }
 
 [patch.crates-io]
 # Original patched components

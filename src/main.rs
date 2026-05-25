@@ -27,12 +27,14 @@ use epd_waveshare::prelude::WaveshareDisplay;
 use static_cell::StaticCell;
 
 mod config;
+mod models;
 mod panic;
 mod tasks;
 
 use config::WifiConfig;
 
 use crate::tasks::display::display_task;
+use crate::tasks::request::request_task;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recommended to have these minimal entries.
@@ -225,6 +227,11 @@ async fn main(spawner: Spawner) {
     info!("{}: waiting for stack to be up...", function_name!());
     stack.wait_config_up().await;
     info!("{}: Stack is up!", function_name!());
+
+    info!("{}: Starting TFL API request task...", function_name!());
+
+    // Spawn the task to get predictions from the TFL API
+    spawner.spawn(unwrap!(request_task(stack.clone())));
 
     let blink_delay = Duration::from_millis(500);
     loop {

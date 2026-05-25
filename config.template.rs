@@ -21,3 +21,43 @@ impl WifiConfig {
         }
     }
 }
+
+// Proxy configuration
+#[derive(Clone, Copy, Format)]
+pub struct ProxyConfig {
+    pub http_proxy: &'static str,
+}
+
+impl ProxyConfig {
+    pub fn new() -> Self {
+        Self {
+            http_proxy: HTTP_PROXY,
+        }
+    }
+}
+
+// TFL API request information
+pub const API_PRIMARY_KEY: &str = "";
+pub const LINE_ID: &str = "district";
+pub const PLATFORM_NAME: &str = "Platform 1";
+pub const STOPCODE: &str = "940GZZLUEPY";
+
+// TFL API request configuration
+#[derive(Clone, Copy, Format)]
+pub struct TflApiRequestConfig {
+    pub api_primary_key: &'static str,
+    pub line_id: &'static str,
+    pub platform_name: &'static str,
+    pub stopcode: &'static str,
+}
+
+impl TflApiRequestConfig {
+    pub fn new() -> Self {
+        Self {
+            api_primary_key: API_PRIMARY_KEY,
+            line_id: LINE_ID,
+            platform_name: PLATFORM_NAME,
+            stopcode: STOPCODE,
+        }
+    }
+}
