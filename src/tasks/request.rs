@@ -13,7 +13,7 @@
 //!  
 use ::function_name::named;
 use core::fmt::Write;
-use defmt::{error, info};
+use defmt::{error, info, warn};
 use embassy_net::Stack;
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
@@ -27,7 +27,7 @@ use reqwless::request::Method;
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
-use crate::models::prediction::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
+use crate::models::prediction::{self, ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
 use crate::{NOTIFY, UPDATE};
 
 use static_cell::StaticCell;
@@ -90,12 +90,24 @@ pub async fn request_task(stack: Stack<'static>) {
         {
             Ok(Some(predictions)) => {
                 info!("Successfully fetched predictions!");
-                // Lock and update state safely
-                {
-                    let mut update = UPDATE.lock().await;
-                    update.arrivals = predictions;
+                // 1. Guard it anyway just to be completely safe
+                if !predictions.is_empty() {
+                    {
+                        let mut update = UPDATE.lock().await;
+
+                        // 2. ALWAYS read from the local variable 'predictions' first!
+                        update.last_updated_secs = predictions[0].timestamp.clone();
+                        update.line_name = predictions[0].line_name.clone();
+                        update.platform_name = predictions[0].platform_name.clone();
+                        update.station_name = predictions[0].station_name.clone();
+
+                        // 3. Move the vector into the static state LAST
+                        update.arrivals = predictions;
+                    }
+                    NOTIFY.signal(());
+                } else {
+                    info!("Predictions logic reported success, but vector was actually empty.");
                 }
-                NOTIFY.signal(());
             }
             Ok(None) => {
                 error!("API returned an empty or unparsable payload");
@@ -197,6 +209,14 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
                 p.platform_name
                     .contains(tfl_api_request_config.platform_name)
             });
+
+            if predictions.is_empty() {
+                warn!(
+                    "{}: No predictions retained after filtering for platform on interest",
+                    function_name!()
+                );
+                return None;
+            }
 
             // Sort array by which is arriving first
             predictions.sort_unstable_by_key(|p| p.time_to_station);

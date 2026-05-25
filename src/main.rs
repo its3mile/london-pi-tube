@@ -27,7 +27,7 @@ use embassy_time::{Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::epd3in7::EPD3in7;
 use epd_waveshare::prelude::WaveshareDisplay;
-use heapless::Vec;
+use heapless::{String, Vec};
 use static_cell::StaticCell;
 
 mod config;
@@ -38,6 +38,7 @@ mod tasks;
 use config::WifiConfig;
 
 use crate::models::update::Update;
+use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
 use crate::tasks::display::display_task;
 use crate::tasks::request::request_task;
 
@@ -113,7 +114,10 @@ assign_resources! {
 // as the display should always display the latest data from the request task (no stale updates)
 static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
     arrivals: Vec::new(),
-    last_updated_secs: 0,
+    last_updated_secs: String::<TFL_API_FIELD_STR_SIZE>::new(),
+    line_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
+    platform_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
+    station_name: String::<TFL_API_FIELD_LONG_STR_SIZE>::new(),
 });
 
 // Atomic signal for the request task to emit, and the display task to consume

@@ -18,7 +18,7 @@ use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
 
 // use crate::models::TFL_API_FIELD_SHORT_STR_SIZE;
 
-pub const ARRAY_MAX_SIZE_PREDICTION_MODEL: usize = 6;
+pub const ARRAY_MAX_SIZE_PREDICTION_MODEL: usize = 7;
 
 #[derive(Deserialize, Debug, Format, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -28,10 +28,10 @@ pub struct Prediction {
     // pub id: String<TFL_API_FIELD_STR_SIZE>,
     pub vehicle_id: String<TFL_API_FIELD_STR_SIZE>,
     // pub naptan_id: String<TFL_API_FIELD_STR_SIZE>,
-    // pub station_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
+    pub station_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
     pub destination_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
     // pub line_id: String<TFL_API_FIELD_STR_SIZE>,
-    // pub line_name: String<TFL_API_FIELD_STR_SIZE>,
+    pub line_name: String<TFL_API_FIELD_STR_SIZE>,
     pub platform_name: String<TFL_API_FIELD_STR_SIZE>,
     // pub direction: String<TFL_API_FIELD_SHORT_STR_SIZE>,
     // pub bearing: String<TFL_API_FIELD_SHORT_STR_SIZE>,
