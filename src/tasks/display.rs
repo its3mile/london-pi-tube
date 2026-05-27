@@ -20,7 +20,14 @@
 use ::function_name::named;
 use core::fmt::Write;
 use defmt::{error, info};
+use embassy_rp::gpio::{Input, Output};
+use embassy_rp::spi;
+use embassy_rp::spi::Spi;
+use embassy_time::Delay;
+use embedded_graphics::image::Image;
+use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
+use embedded_iconoir::prelude::*;
 use epd_waveshare::color::Color;
 use epd_waveshare::epd3in7::Display3in7;
 use epd_waveshare::prelude::WaveshareDisplay;
@@ -29,12 +36,6 @@ use u8g2_fonts::{
     FontRenderer, fonts,
     types::{FontColor, HorizontalAlignment, VerticalPosition},
 };
-
-use embassy_rp::gpio::{Input, Output};
-use embassy_rp::spi;
-use embassy_rp::spi::Spi;
-
-use embassy_time::Delay;
 
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
@@ -128,7 +129,7 @@ fn show_splash(
             "its3mile/london-pi-tube",
             Point::new(
                 display.bounding_box().size.width as i32 / 2,
-                display.bounding_box().size.height as i32 / 2,
+                (display.bounding_box().size.height as i32 / 2),
             ),
             VerticalPosition::Center,
             HorizontalAlignment::Center,
@@ -137,6 +138,36 @@ fn show_splash(
         )
         .map_err(|_| DisplayError::RenderingFailed)?;
 
+    // Draw train icons in each corner of the display
+    let train_icon = icons::size48px::transport::Train::new(BinaryColor::On);
+
+    Image::new(
+        &train_icon,
+        display.bounding_box().top_left + Point::new(4, 8),
+    )
+    .draw(&mut display.color_converted())
+    .map_err(|_| DisplayError::RenderingFailed)?;
+
+    Image::new(
+        &train_icon,
+        display.bounding_box().top_left + Point::new(4, 228),
+    )
+    .draw(&mut display.color_converted())
+    .map_err(|_| DisplayError::RenderingFailed)?;
+
+    Image::new(
+        &train_icon,
+        display.bounding_box().top_left + Point::new(428, 4),
+    )
+    .draw(&mut display.color_converted())
+    .map_err(|_| DisplayError::RenderingFailed)?;
+
+    Image::new(
+        &train_icon,
+        display.bounding_box().top_left + Point::new(428, 228),
+    )
+    .draw(&mut display.color_converted())
+    .map_err(|_| DisplayError::RenderingFailed)?;
     info!("{}: Rendering splash", function_name!());
 
     epd_driver
@@ -261,25 +292,41 @@ fn show_update(
 
             // Small vertical pad to clear the location line
             pos.y += 36;
+        } else {
+            pos.y += 12;
         }
     }
 
     // Bottom left, line status indicator
-    if !update.line_status.is_empty() {
-        // Place at bottom left (Canvas: 480x280) with a 10px margin edge
-        let status_pos = Point::new(10, 270);
+    // Anchor position for the footer status icon (Bottom Left)
+    let icon_pos = display.bounding_box().top_left + Point::new(4, 228);
 
-        styles
-            .tiny_font
-            .render_aligned(
-                update.line_status.as_str(),
-                status_pos,
-                VerticalPosition::Baseline,
-                HorizontalAlignment::Left, // Anchor cleanly from the left margin
-                FontColor::Transparent(styles.colors.fg),
-                display,
-            )
-            .map_err(|_| DisplayError::RenderingFailed)?;
+    match update.line_status.as_str() {
+        "Good Service" => {
+            let icon = icons::size48px::actions::CheckCircle::new(BinaryColor::On);
+            Image::new(&icon, icon_pos)
+                .draw(&mut display.color_converted())
+                .ok();
+        }
+        s if s.contains("Minor") || s.contains("Delay") => {
+            let icon = icons::size48px::activities::Hourglass::new(BinaryColor::On);
+            Image::new(&icon, icon_pos)
+                .draw(&mut display.color_converted())
+                .ok();
+        }
+        s if s.contains("Severe") || s.contains("Suspended") => {
+            let icon = icons::size48px::activities::FireFlame::new(BinaryColor::On);
+            Image::new(&icon, icon_pos)
+                .draw(&mut display.color_converted())
+                .ok();
+        }
+        _ => {
+            // Fallback warning triangle for anything else
+            let icon = icons::size48px::actions::WarningTriangle::new(BinaryColor::On);
+            Image::new(&icon, icon_pos)
+                .draw(&mut display.color_converted())
+                .ok();
+        }
     }
 
     // Bottom right, last updated

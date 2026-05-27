@@ -95,6 +95,7 @@ embedded-tls = { version = "0.18.0", default-features = false, features = [
     "rustpki", # Required to parse and cross-check the server's certificate handshake
 ] }
 der = { version = "0.8.0", default-features = false, features = ["derive", "oid", "time", "heapless"] }
+embedded-iconoir = { version = "0.2.3", features = ["18px", "48px"] }
 
 [patch.crates-io]
 # Original patched components
