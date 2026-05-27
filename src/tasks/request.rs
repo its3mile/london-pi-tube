@@ -27,7 +27,8 @@ use reqwless::request::Method;
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
-use crate::models::prediction::{self, ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
+use crate::models::prediction::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
+use crate::models::status::{ARRAY_MAX_SIZE_LINE_STATUS_MODEL, Status};
 use crate::{NOTIFY, UPDATE};
 
 use static_cell::StaticCell;
@@ -82,42 +83,71 @@ pub async fn request_task(stack: Stack<'static>) {
         info!("{}: Making API request", function_name!());
 
         // Request station & platform arrival predictions
-        match with_timeout(
+        let fetched_predictions = match with_timeout(
             Duration::from_secs(10),
             request_prediction(&mut http_client, rx_buffer),
         )
         .await
         {
-            Ok(Some(predictions)) => {
-                info!("Successfully fetched predictions!");
-                // 1. Guard it anyway just to be completely safe
-                if !predictions.is_empty() {
-                    {
-                        let mut update = UPDATE.lock().await;
-
-                        // 2. ALWAYS read from the local variable 'predictions' first!
-                        update.last_updated_secs = predictions[0].timestamp.clone();
-                        update.line_name = predictions[0].line_name.clone();
-                        update.platform_name = predictions[0].platform_name.clone();
-                        update.station_name = predictions[0].station_name.clone();
-
-                        // 3. Move the vector into the static state LAST
-                        update.arrivals = predictions;
-                    }
-                    NOTIFY.signal(());
-                } else {
-                    info!("Predictions logic reported success, but vector was actually empty.");
-                }
-            }
+            Ok(Some(predictions)) => Some(predictions),
             Ok(None) => {
-                error!("API returned an empty or unparsable payload");
+                error!("Predictions API returned an empty or unparsable payload");
+                None
             }
             Err(_) => {
-                error!("Network request timed out! Wi-Fi link might be unstable.");
-                // The loop will automatically clean up, hit the bottom,
-                // drop resources, and try again in 30 seconds.
+                error!("Predictions network request timed out!");
+                None
+            }
+        };
+
+        // Request (line) status (all okay, minor delays, ...)
+        let fetched_status = match with_timeout(
+            Duration::from_secs(10),
+            request_status(&mut http_client, rx_buffer),
+        )
+        .await
+        {
+            Ok(Some(status)) => Some(status),
+            Ok(None) => {
+                error!("Status API returned an empty or unparsable payload");
+                None
+            }
+            Err(_) => {
+                error!("Status network request timed out!");
+                None
+            }
+        };
+
+        // Trigger an update if there are predictions, or to confirm status
+        {
+            let mut update = UPDATE.lock().await;
+
+            // Update predictions data if available
+            if let Some(predictions) = fetched_predictions {
+                if !predictions.is_empty() {
+                    update.last_updated_secs = predictions[0].timestamp.clone();
+                    update.line_name = predictions[0].line_name.clone();
+                    update.platform_name = predictions[0].platform_name.clone();
+                    update.station_name = predictions[0].station_name.clone();
+
+                    update.arrivals = predictions;
+                }
+            }
+
+            // Line Status with fallback logic
+            if let Some(status) = fetched_status {
+                if let Some(line_status) = status.line_statuses.first() {
+                    // Explicit warning/alert state from the API :(
+                    update.line_status = line_status.status_severity_description.clone();
+                } else {
+                    // No status data returned = everything is running perfectly fine!
+                    update.line_status = String::try_from("Good Service").unwrap_or_default();
+                }
             }
         }
+
+        // Signal the display task that data is ready
+        NOTIFY.signal(());
 
         // Set the flag to sleep at the start of the next cycle
         sleep_this_cycle = true;
@@ -228,6 +258,111 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
                 "{}: Deserialisation failed with error: {:?}",
                 function_name!(),
                 defmt::Debug2Format(&e)
+            );
+            return None;
+        }
+    }
+}
+
+#[named]
+pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
+    http_client: &mut HttpClient<'_, TcpClient<'_, 1, RX_SZ, TX_SZ>, DnsSocket<'_>>,
+    rx_buffer: &mut [u8],
+) -> Option<Status> {
+    // 1. Dynamic URL Generation mirroring request_prediction
+    let tfl_api_request_config = TflApiRequestConfig::new();
+    let proxy_config = ProxyConfig::new();
+    let mut url_buffer: String<256> = String::new();
+
+    // Hardcoded line ID parameters are replaced by runtime configs
+    // Assuming tfl_api_request_config contains or can provide your target line ID
+    let url = match write!(
+        &mut url_buffer,
+        "{}/Line/{}/Status?api_key={}",
+        proxy_config.http_proxy,
+        tfl_api_request_config.line_id,
+        tfl_api_request_config.api_primary_key
+    ) {
+        Ok(_) => url_buffer.as_str(),
+        Err(e) => {
+            error!(
+                "{}: URL generation failed: Stack buffer size of 256 bytes was too small!: {}",
+                function_name!(),
+                e
+            );
+            return None;
+        }
+    };
+
+    // 2. Make the HTTP request to the TFL API
+    info!("{}: connecting to {}", function_name!(), &url);
+
+    let mut request = match http_client.request(Method::GET, &url).await {
+        Ok(req) => req,
+        Err(e) => {
+            error!("{}: Failed to make HTTP request: {}", function_name!(), e);
+            return None;
+        }
+    };
+
+    // 3. Send HTTP request
+    let response = match request.send(rx_buffer).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("{}: Failed to send HTTP request: {}", function_name!(), e);
+            return None;
+        }
+    };
+
+    // 4. Read response body
+    let body = match response.body().read_to_end().await {
+        Ok(body) => body,
+        Err(_) => {
+            error!("{}: Failed to read response body", function_name!());
+            return None;
+        }
+    };
+
+    info!(
+        "{}: About to deserialize payload. Total bytes in body variable: {}",
+        function_name!(),
+        body.len()
+    );
+
+    // 5. Process JSON objects in body
+    match serde_json_core::de::from_slice::<Vec<Status, ARRAY_MAX_SIZE_LINE_STATUS_MODEL>>(&body) {
+        Ok((mut statuses, _used)) => {
+            info!(
+                "{}: Successfully deserialized {} line statuses",
+                function_name!(),
+                statuses.len()
+            );
+
+            // Instead of pop() which could panic if empty, safely handle it
+            if statuses.is_empty() {
+                error!(
+                    "{}: API returned a valid JSON array, but it was empty!",
+                    function_name!()
+                );
+                return None;
+            }
+
+            // Safely take the last element out of the heapless::Vec
+            let status = statuses.pop();
+            status
+        }
+        Err(e) => {
+            error!(
+                "{}: Deserialisation failed with error: {:?}",
+                function_name!(),
+                defmt::Debug2Format(&e)
+            );
+
+            // Helpful fallback log to spot payload issues in terminal
+            info!(
+                "{}: Raw response payload: {}",
+                function_name!(),
+                str::from_utf8(body).unwrap_or("[Malformed UTF-8 body]")
             );
             return None;
         }

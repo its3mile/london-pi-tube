@@ -1,4 +1,21 @@
 //! Display task
+//!
+//! This draws and renders the sent update onto the display,
+//! to look something like this:
+//!
+//! +-------------------------------------------------------------+
+//! | District Line - East Putney Underground Station             |
+//! | Eastbound -  Platform 1                                     |
+//! |                                                             |
+//! |  2 mins      Barking                                        |
+//! |              Approaching Southfields                        |
+//! |                                                             |
+//! |  7 mins      Upminster                                      |
+//! |                                                             |
+//! |                                                             |
+//! | Good Service                                 Updated: 15:43 |
+//! +-------------------------------------------------------------+
+//!
 
 use ::function_name::named;
 use core::fmt::Write;
@@ -255,7 +272,25 @@ fn show_update(
         }
     }
 
-    // Last updated (footer)
+    // Bottom left, line status indicator
+    if !update.line_status.is_empty() {
+        // Place at bottom left (Canvas: 480x280) with a 10px margin edge
+        let status_pos = Point::new(10, 270);
+
+        styles
+            .tiny_font
+            .render_aligned(
+                update.line_status.as_str(),
+                status_pos,
+                VerticalPosition::Baseline,
+                HorizontalAlignment::Left, // Anchor cleanly from the left margin
+                FontColor::Transparent(styles.colors.fg),
+                display,
+            )
+            .map_err(|_| DisplayError::RenderingFailed)?;
+    }
+
+    // Bottom right, last updated
     if !update.last_updated_secs.is_empty() {
         let (_date, time) = split_iso8601_timestamp(update.last_updated_secs.as_str());
         let mut footer_text = String::<32>::new();

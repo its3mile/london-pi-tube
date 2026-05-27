@@ -38,7 +38,9 @@ mod tasks;
 use config::WifiConfig;
 
 use crate::models::update::Update;
-use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
+use crate::models::{
+    TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
+};
 use crate::tasks::display::display_task;
 use crate::tasks::request::request_task;
 
@@ -116,6 +118,7 @@ static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
     arrivals: Vec::new(),
     last_updated_secs: String::<TFL_API_FIELD_STR_SIZE>::new(),
     line_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
+    line_status: String::<TFL_API_FIELD_SHORT_STR_SIZE>::new(),
     platform_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
     station_name: String::<TFL_API_FIELD_LONG_STR_SIZE>::new(),
 });
