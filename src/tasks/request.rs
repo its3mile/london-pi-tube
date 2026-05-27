@@ -13,7 +13,7 @@
 //!  
 use ::function_name::named;
 use core::fmt::Write;
-use defmt::{error, info, warn};
+use defmt::{debug, error, info, warn};
 use embassy_net::Stack;
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
@@ -80,16 +80,19 @@ pub async fn request_task(stack: Stack<'static>) {
         let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
 
         // Make the API requests
-        info!("{}: Making API request", function_name!());
 
         // Request station & platform arrival predictions
+        info!("{}: Making Prediction API request", function_name!());
         let fetched_predictions = match with_timeout(
             Duration::from_secs(10),
             request_prediction(&mut http_client, rx_buffer),
         )
         .await
         {
-            Ok(Some(predictions)) => Some(predictions),
+            Ok(Some(predictions)) => {
+                debug!("{}: predictions = {}", function_name!(), predictions);
+                Some(predictions)
+            }
             Ok(None) => {
                 error!("Predictions API returned an empty or unparsable payload");
                 None
@@ -101,13 +104,17 @@ pub async fn request_task(stack: Stack<'static>) {
         };
 
         // Request (line) status (all okay, minor delays, ...)
+        info!("{}: Making Status API request", function_name!());
         let fetched_status = match with_timeout(
             Duration::from_secs(10),
             request_status(&mut http_client, rx_buffer),
         )
         .await
         {
-            Ok(Some(status)) => Some(status),
+            Ok(Some(status)) => {
+                debug!("{}: status = {}", function_name!(), status);
+                Some(status)
+            }
             Ok(None) => {
                 error!("Status API returned an empty or unparsable payload");
                 None
@@ -337,7 +344,7 @@ pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
                 function_name!(),
                 statuses.len()
             );
-
+            debug!("{}: statuses = {}", function_name!(), statuses);
             // Instead of pop() which could panic if empty, safely handle it
             if statuses.is_empty() {
                 error!(

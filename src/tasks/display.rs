@@ -39,7 +39,6 @@ use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
 
-use crate::models::TFL_API_FIELD_LONG_STR_SIZE;
 use crate::models::update::Update;
 use crate::{NOTIFY, UPDATE};
 
@@ -200,9 +199,9 @@ fn show_update(
         // Time to station
         let mut time_to_station = String::<16>::new();
         if (arrival.time_to_station as f32 / 60.0) < 1.0 {
-            let _ = write!(&mut time_to_station, "< 1 min");
+            let _ = write!(&mut time_to_station, "<1 min");
         } else if (arrival.time_to_station as f32 / 60.0) < 2.0 {
-            let _ = write!(&mut time_to_station, "< 2 mins");
+            let _ = write!(&mut time_to_station, "<2 mins");
         } else {
             let _ = write!(
                 &mut time_to_station,
@@ -224,8 +223,8 @@ fn show_update(
             .map_err(|_| DisplayError::RenderingFailed)?;
 
         // Destination name
-        // Offset expanded to 140px to safely clear the countdowns
-        let destination_pos = pos + Point::new(140, 0);
+        // Offset expanded to 128px to safely clear the countdowns
+        let destination_pos = pos + Point::new(128, 0);
         let destination_name = first_two_words(&arrival.destination_name);
 
         styles
@@ -245,20 +244,13 @@ fn show_update(
 
         // Current location, for first arrival only
         if idx == 0 {
-            let mut current_location = String::<TFL_API_FIELD_LONG_STR_SIZE>::new();
-            let _ = write!(
-                &mut current_location,
-                "Current Location: {}",
-                arrival.current_location.as_str()
-            );
-
-            // Shifted far left (X=20) to give long strings optimal landscape real estate
-            let location_pos = Point::new(20, pos.y);
+            // Shifted to line up with destination name
+            let location_pos = Point::new(140, pos.y);
 
             styles
                 .regular_text_font
                 .render_aligned(
-                    current_location.as_str(),
+                    arrival.current_location.as_str(),
                     location_pos,
                     VerticalPosition::Baseline,
                     HorizontalAlignment::Left,

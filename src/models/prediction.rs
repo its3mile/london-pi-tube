@@ -18,7 +18,7 @@ use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
 
 // use crate::models::TFL_API_FIELD_SHORT_STR_SIZE;
 
-pub const ARRAY_MAX_SIZE_PREDICTION_MODEL: usize = 7;
+pub const ARRAY_MAX_SIZE_PREDICTION_MODEL: usize = 8;
 
 #[derive(Deserialize, Debug, Format, Clone)]
 #[serde(rename_all = "camelCase")]
