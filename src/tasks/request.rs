@@ -56,7 +56,7 @@ pub async fn request_task(stack: Stack<'static>) {
         if sleep_this_cycle {
             let query_delay_secs: u64 = option_env!("QUERY_DELAY")
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(5);
+                .unwrap_or(30);
             info!(
                 "{}: Waiting for {} seconds before making the request...",
                 function_name!(),
