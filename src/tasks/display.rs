@@ -250,7 +250,7 @@ fn show_update(
             .map_err(|_| DisplayError::RenderingFailed)?;
 
         // Move vertical cursor down to clear the font line
-        pos.y += 24;
+        pos.y += 32;
 
         // Current location, for first arrival only
         if idx == 0 {
