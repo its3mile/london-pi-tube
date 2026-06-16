@@ -85,10 +85,21 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
 
     // Main update loop
     loop {
+        // Sleep display
+        epd_driver
+            .sleep(&mut spi_device, &mut Delay)
+            .expect("Display: Failed to put display to sleep.");
+
         // Acquire lock to read data update
         info!("{}: Wait for signal...", function_name!());
         NOTIFY.wait().await;
 
+        // Wake display
+        epd_driver
+            .wake_up(&mut spi_device, &mut Delay)
+            .expect("Display: Failed to wake display from sleep.");
+
+        // Get update
         let update = {
             let update = UPDATE.lock().await;
             (*update).clone()
@@ -129,7 +140,7 @@ fn show_splash(
             "its3mile/london-pi-tube",
             Point::new(
                 display.bounding_box().size.width as i32 / 2,
-                (display.bounding_box().size.height as i32 / 2),
+                display.bounding_box().size.height as i32 / 2,
             ),
             VerticalPosition::Center,
             HorizontalAlignment::Center,
