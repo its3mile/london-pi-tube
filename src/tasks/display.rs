@@ -149,38 +149,6 @@ fn show_splash(
         )
         .map_err(|_| DisplayError::RenderingFailed)?;
 
-    // Draw train icons in each corner of the display
-    let train_icon = icons::size48px::transport::Train::new(BinaryColor::On);
-
-    Image::new(
-        &train_icon,
-        display.bounding_box().top_left + Point::new(4, 8),
-    )
-    .draw(&mut display.color_converted())
-    .map_err(|_| DisplayError::RenderingFailed)?;
-
-    Image::new(
-        &train_icon,
-        display.bounding_box().top_left + Point::new(4, 228),
-    )
-    .draw(&mut display.color_converted())
-    .map_err(|_| DisplayError::RenderingFailed)?;
-
-    Image::new(
-        &train_icon,
-        display.bounding_box().top_left + Point::new(428, 4),
-    )
-    .draw(&mut display.color_converted())
-    .map_err(|_| DisplayError::RenderingFailed)?;
-
-    Image::new(
-        &train_icon,
-        display.bounding_box().top_left + Point::new(428, 228),
-    )
-    .draw(&mut display.color_converted())
-    .map_err(|_| DisplayError::RenderingFailed)?;
-    info!("{}: Rendering splash", function_name!());
-
     epd_driver
         .update_and_display_frame(spi_device, &mut display.buffer(), &mut Delay)
         .expect("Display: Failed to update display with splash");
@@ -314,26 +282,26 @@ fn show_update(
 
     match update.line_status.as_str() {
         "Good Service" => {
-            let icon = icons::size48px::actions::CheckCircle::new(BinaryColor::On);
+            let icon = icons::size48px::emojis::Emoji::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
         }
         s if s.contains("Minor") || s.contains("Delay") => {
-            let icon = icons::size48px::activities::Hourglass::new(BinaryColor::On);
+            let icon = icons::size48px::emojis::EmojiQuite::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
         }
         s if s.contains("Severe") || s.contains("Suspended") => {
-            let icon = icons::size48px::activities::FireFlame::new(BinaryColor::On);
+            let icon = icons::size48px::emojis::EmojiSad::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
         }
         _ => {
             // Fallback warning triangle for anything else
-            let icon = icons::size48px::actions::WarningTriangle::new(BinaryColor::On);
+            let icon = icons::size48px::emojis::EmojiPuzzled::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
