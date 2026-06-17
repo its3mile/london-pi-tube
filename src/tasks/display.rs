@@ -281,8 +281,8 @@ fn show_update(
     let icon_pos = display.bounding_box().top_left + Point::new(4, 228);
 
     match update.line_status.as_str() {
-        "Good Service" => {
-            let icon = icons::size48px::emojis::Emoji::new(BinaryColor::On);
+        s if s.contains("Severe") || s.contains("Suspended") => {
+            let icon = icons::size48px::emojis::EmojiSad::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
@@ -293,8 +293,8 @@ fn show_update(
                 .draw(&mut display.color_converted())
                 .ok();
         }
-        s if s.contains("Severe") || s.contains("Suspended") => {
-            let icon = icons::size48px::emojis::EmojiSad::new(BinaryColor::On);
+        "Good Service" => {
+            let icon = icons::size48px::emojis::Emoji::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
