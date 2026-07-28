@@ -23,12 +23,12 @@ use embassy_time::{Duration, with_timeout};
 use heapless::String;
 use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
-use reqwless::request::Method;
+use reqwless::request::{Method, RequestBuilder};
 
-use crate::config::ProxyConfig;
-use crate::config::TflApiRequestConfig;
+use crate::config::{ProxyConfig, TflApiRequestConfig, WorldTimeApiConfig};
 use crate::models::prediction::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
 use crate::models::status::{ARRAY_MAX_SIZE_LINE_STATUS_MODEL, Status};
+use crate::models::time::Timezone;
 use crate::{NOTIFY, UPDATE};
 
 use static_cell::StaticCell;
@@ -81,6 +81,32 @@ pub async fn request_task(stack: Stack<'static>) {
 
         // Make the API requests
 
+        // Request time
+        info!("{}: Making time API request", function_name!());
+        let fetched_time = match with_timeout(
+            Duration::from_secs(10),
+            request_time(&mut http_client, rx_buffer),
+        )
+        .await
+        {
+            Ok(Some(tz)) => {
+                debug!("{}: tz = {}", function_name!(), tz);
+                Some(tz)
+            }
+            Ok(None) => {
+                error!("Timezone API returned an empty or unparsable payload");
+                None
+            }
+            Err(_) => {
+                error!("Timezone network request timed out!");
+                None
+            }
+            _ => {
+                error!("Unexpected error occurred when requesting timezone!");
+                None
+            }
+        };
+
         // Request station & platform arrival predictions
         info!("{}: Making Prediction API request", function_name!());
         let fetched_predictions = match with_timeout(
@@ -132,7 +158,6 @@ pub async fn request_task(stack: Stack<'static>) {
             // Update predictions data if available
             if let Some(predictions) = fetched_predictions {
                 if !predictions.is_empty() {
-                    update.last_updated_secs = predictions[0].timestamp.clone();
                     update.line_name = predictions[0].line_name.clone();
                     update.platform_name = predictions[0].platform_name.clone();
                     update.station_name = predictions[0].station_name.clone();
@@ -150,6 +175,10 @@ pub async fn request_task(stack: Stack<'static>) {
                     // No status data returned = everything is running perfectly fine!
                     update.line_status = String::try_from("Good Service").unwrap_or_default();
                 }
+            }
+
+            if let Some(tz) = fetched_time {
+                update.datetime = tz.datetime;
             }
         }
 
@@ -372,6 +401,99 @@ pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
                 str::from_utf8(body).unwrap_or("[Malformed UTF-8 body]")
             );
             return None;
+        }
+    }
+}
+
+#[named]
+async fn request_time<const RX_SZ: usize, const TX_SZ: usize>(
+    http_client: &mut HttpClient<'_, TcpClient<'_, 1, RX_SZ, TX_SZ>, DnsSocket<'_>>,
+    rx_buffer: &mut [u8],
+) -> Option<Timezone> {
+    // define the URL for the World Time API request
+    let worldtime_api_config = WorldTimeApiConfig::new();
+    let mut url_buffer: String<256> = String::new();
+    let url = match write!(
+        &mut url_buffer,
+        "https://world-time-api3.p.rapidapi.com/timezone/{}/{}",
+        worldtime_api_config.area, worldtime_api_config.location,
+    ) {
+        Ok(_) => url_buffer.as_str(),
+        Err(e) => {
+            error!(
+                "{}: URL generation failed: Stack buffer size of 256 bytes was too small!: {}",
+                function_name!(),
+                e
+            );
+            None?
+        }
+    };
+
+    // Make the HTTP request to the TFL API
+    info!("{}: connecting to {}", function_name!(), &url);
+
+    // Make HTTP request
+    let headers = [
+        ("x-rapidapi-host", worldtime_api_config.rapidapi_host),
+        ("x-rapidapi-key", worldtime_api_config.rapidapi_key),
+    ];
+
+    let mut request = match http_client.request(Method::GET, &url).await {
+        Ok(req) => req.headers(&headers),
+        Err(e) => {
+            error!("{}: Failed to make HTTP request: {}", function_name!(), e);
+            None?
+        }
+    };
+
+    // Send HTTP request
+    let response = match request.send(rx_buffer).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("{}: Failed to send HTTP request: {}", function_name!(), e);
+            None?
+        }
+    };
+
+    // Read response body
+    let body = match response.body().read_to_end().await {
+        Ok(body) => body,
+        Err(_) => {
+            error!("{}: Failed to read response body", function_name!());
+            return None;
+        }
+    };
+
+    // Process JSON objects in body
+    info!(
+        "{}: About to deserialize payload. Total bytes in body variable: {}",
+        function_name!(),
+        body.len()
+    );
+
+    match core::str::from_utf8(&body[..]) {
+        Ok(body_str) => match serde_json_core::de::from_str::<Timezone>(body_str) {
+            Ok((tz, _used)) => {
+                info!(
+                    "{}: Successfully deserialized timezone response",
+                    function_name!()
+                );
+                Some(tz)
+            }
+            Err(e) => {
+                error!(
+                    "{}: Deserialisation failed with error: {:?}",
+                    function_name!(),
+                    defmt::Debug2Format(&e)
+                );
+
+                info!("{}: Raw response payload: {}", function_name!(), body_str);
+                None
+            }
+        },
+        Err(_) => {
+            error!("{}: Response body was not valid UTF-8", function_name!());
+            None
         }
     }
 }

@@ -309,8 +309,8 @@ fn show_update(
     }
 
     // Bottom right, last updated
-    if !update.last_updated_secs.is_empty() {
-        let (_date, time) = split_iso8601_timestamp(update.last_updated_secs.as_str());
+    if !update.datetime.is_empty() {
+        let (_date, time) = split_iso8601_timestamp(update.datetime.as_str());
         let mut footer_text = String::<32>::new();
         let _ = write!(&mut footer_text, "Updated: {}", time);
 

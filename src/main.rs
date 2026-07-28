@@ -40,6 +40,7 @@ use config::WifiConfig;
 use crate::models::update::Update;
 use crate::models::{
     TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
+    WORLD_TIME_API_FIELD_STR_SIZE,
 };
 use crate::tasks::display::display_task;
 use crate::tasks::request::request_task;
@@ -114,14 +115,7 @@ assign_resources! {
 // the API is unlikely to change in the interval of 30 seconds
 // - Request tasks waits - the request task should not wait for the display to finish reading
 // as the display should always display the latest data from the request task (no stale updates)
-static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
-    arrivals: Vec::new(),
-    last_updated_secs: String::<TFL_API_FIELD_STR_SIZE>::new(),
-    line_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
-    line_status: String::<TFL_API_FIELD_SHORT_STR_SIZE>::new(),
-    platform_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
-    station_name: String::<TFL_API_FIELD_LONG_STR_SIZE>::new(),
-});
+static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update::new());
 
 // Atomic signal for the request task to emit, and the display task to consume
 // to know when there is new data to physically show.
@@ -264,15 +258,23 @@ async fn main(spawner: Spawner) {
     // Spawn the task to get predictions from the TFL API
     spawner.spawn(unwrap!(request_task(stack.clone())));
 
-    let blink_delay = Duration::from_millis(500);
-    loop {
-        // Keep the main task alive
-        Timer::after(blink_delay).await;
-        info!("{}: Main task is running...", function_name!());
-
-        // Blink the onboard LED to show that the main task is alive
-        control.gpio_set(0, true).await;
-        Timer::after(blink_delay).await;
-        control.gpio_set(0, false).await;
+    // Keep the main task alive
+    if cfg!(debug_assertions) {
+        // In debug flash the led
+        let blink_delay = Duration::from_millis(500);
+        loop {
+            Timer::after(blink_delay).await;
+            info!("{}: Main task is running...", function_name!());
+            control.gpio_set(0, true).await;
+            Timer::after(blink_delay).await;
+            control.gpio_set(0, false).await;
+        }
+    } else {
+        // In release just sleep for a few mins and periodically print a message
+        let main_task_delay = Duration::from_secs(300);
+        loop {
+            Timer::after(main_task_delay).await;
+            info!("{}: Main task is running...", function_name!());
+        }
     }
 }
