@@ -64,3 +64,28 @@ impl TflApiRequestConfig {
         }
     }
 }
+
+// World Time API
+pub const RAPIDAPI_HOST: &str = "world-time-api3.p.rapidapi.com";
+pub const RAPIDAPI_KEY: &str = "";
+pub const AREA: &str = "Europe";
+pub const LOCATION: &str = "London";
+
+#[derive(Clone, Copy, Format)]
+pub struct WorldTimeApiConfig {
+    pub rapidapi_host: &'static str,
+    pub rapidapi_key: &'static str,
+    pub area: &'static str,
+    pub location: &'static str,
+}
+
+impl WorldTimeApiConfig {
+    pub fn new() -> Self {
+        Self {
+            rapidapi_host: RAPIDAPI_HOST,
+            rapidapi_key: RAPIDAPI_KEY,
+            area: AREA,
+            location: LOCATION,
+        }
+    }
+}
