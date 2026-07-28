@@ -49,7 +49,14 @@
         "reveal": "silent",
         "panel": "shared"
       },
-      "problemMatcher": []
+      "problemMatcher": [],
+      "options": {
+        "env": {
+          "PICOTOOL_PATH": "${command:raspberry-pi-pico.getPicotoolPath}",
+          "CHIP": "${command:raspberry-pi-pico.getChip}",
+          "QUERY_DELAY": "30"
+        }
+      }
     },
     {
       "label": "Compile Project (debug)",
