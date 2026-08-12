@@ -66,13 +66,13 @@ jobs:
       - name: Create UF2 from ELF
         run: |
           sudo picotool uf2 convert \
-            target/thumbv8m.main-none-eabihf/release/london-pi-tube2 -t elf \
-            target/thumbv8m.main-none-eabihf/release/london-pi-tube2.uf2 -t uf2
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube -t elf \
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube.uf2 -t uf2
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
           files: |
-            target/thumbv8m.main-none-eabihf/release/london-pi-tube2
-            target/thumbv8m.main-none-eabihf/release/london-pi-tube2.uf2
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube.uf2
