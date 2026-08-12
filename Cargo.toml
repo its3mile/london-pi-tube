@@ -96,6 +96,9 @@ embedded-tls = { version = "0.18.0", default-features = false, features = [
 ] }
 der = { version = "0.8.0", default-features = false, features = ["derive", "oid", "time", "heapless"] }
 embedded-iconoir = { version = "0.2.3", features = ["18px", "48px"] }
+sntpc-net-embassy = "0.11.0"
+sntpc = "0.11.0"
+sntpc-time-embassy = "0.6.0"
 
 [patch.crates-io]
 # Original patched components
