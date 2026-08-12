@@ -1,5 +1,5 @@
 [package]
-name = "london-pi-tube2"
+name = "london-pi-tube"
 version = "0.1.0"
 edition = "2024"
 license = "MIT or Apache-2.0"
