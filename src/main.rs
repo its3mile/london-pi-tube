@@ -42,6 +42,7 @@ use crate::models::{
     TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
 };
 use crate::tasks::display::display_task;
+use crate::tasks::ntp::ntp_task;
 use crate::tasks::request::request_task;
 
 // Program metadata for `picotool info`.
@@ -259,9 +260,12 @@ async fn main(spawner: Spawner) {
     stack.wait_config_up().await;
     info!("{}: Stack is up!", function_name!());
 
-    info!("{}: Starting TFL API request task...", function_name!());
+    // Spawn the task that gets current time
+    info!("{}: Starting NTP task...", function_name!());
+    spawner.spawn(unwrap!(ntp_task(stack.clone())));
 
     // Spawn the task to get predictions from the TFL API
+    info!("{}: Starting TFL API request task...", function_name!());
     spawner.spawn(unwrap!(request_task(stack.clone())));
 
     let blink_delay = Duration::from_millis(500);

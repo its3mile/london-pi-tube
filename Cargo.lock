@@ -1800,6 +1800,9 @@ dependencies = [
  "serde",
  "serde-json-core",
  "smart-leds",
+ "sntpc",
+ "sntpc-net-embassy",
+ "sntpc-time-embassy",
  "static_cell",
  "u8g2-fonts",
  "usbd-hid",
@@ -2712,6 +2715,35 @@ dependencies = [
  "defmt 0.3.100",
  "heapless 0.9.3",
  "managed",
+]
+
+[[package]]
+name = "sntpc"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "294278b134cd7d06d7f22eca970aebe38707864c080f66547f9ad26327534af3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
+name = "sntpc-net-embassy"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97d4addcbed51e6aa5178ba85834d1748b70da0f3df4552382a10afbfe285ae3"
+dependencies = [
+ "embassy-net",
+ "sntpc",
+]
+
+[[package]]
+name = "sntpc-time-embassy"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "184c354de440d7b2e95a547eb16f2527a1eba1bb666f322782cdb4d4668fc66f"
+dependencies = [
+ "embassy-time",
+ "sntpc",
 ]
 
 [[package]]
