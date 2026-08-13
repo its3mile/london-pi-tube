@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        uses: ./.github/actions/setup-environment
+
+      - name: Set Config
+        env:
+          WIFI_SSID: ${{ secrets.WIFI_SSID }}
+          WIFI_PASSWORD: ${{ secrets.WIFI_PASSWORD }}
+        run: |
+          sed 's/"your-ssid"/"'"$WIFI_SSID"'"/g; s/r"your-wifi-password"/r"'"$WIFI_PASSWORD"'"/g' config.template.rs > src/config.rs
+
+      - name: Build (release)
+        run: |
+          cargo build --release
+
+      - name: Create UF2 from ELF
+        run: |
+          sudo picotool uf2 convert \
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube -t elf \
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube.uf2 -t uf2
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.sha }}
+          files: |
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube
+            target/thumbv8m.main-none-eabihf/release/london-pi-tube.uf2
