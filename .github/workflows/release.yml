@@ -11,6 +11,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
 
+    env:
+      TAG_NAME: ""
+
     permissions:
       contents: write
 
@@ -38,10 +41,20 @@ jobs:
             target/thumbv8m.main-none-eabihf/release/london-pi-tube -t elf \
             target/thumbv8m.main-none-eabihf/release/london-pi-tube.uf2 -t uf2
 
+      - name: Derive Short SHA and Create Tag
+        id: vars
+        shell: bash
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TAG_NAME="release-${SHORT_SHA}"
+          git tag $TAG_NAME
+          git push origin $TAG_NAME
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.sha }}
+          tag_name: ${{ steps.vars.outputs.tag_name }}
           files: |
             target/thumbv8m.main-none-eabihf/release/london-pi-tube
             target/thumbv8m.main-none-eabihf/release/london-pi-tube.uf2
