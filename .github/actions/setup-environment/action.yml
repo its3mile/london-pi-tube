@@ -1,0 +1,42 @@
+name: "Setup Environment"
+description: "Installs build tools, notably Rust target, Picotool, and Pico SDK"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Pico SDK
+      shell: bash
+      run: |
+        sudo apt update
+        sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
+        mkdir -p  ~/pico
+        cd ~/pico/
+        git clone -b master https://github.com/raspberrypi/pico-sdk.git
+        cd pico-sdk
+        git submodule update --init
+        echo 'export PICO_SDK_PATH=$HOME/pico/pico-sdk' >> $GITHUB_PATH
+        echo "PICO_SDK_PATH=$HOME/pico/pico-sdk" >> $GITHUB_ENV
+
+    - name: Install Picotool
+      shell: bash
+      run: |
+        mkdir -p ~/builds
+        cd ~/builds
+        git clone https://github.com/raspberrypi/picotool
+        cd picotool
+        export PICO_SDK_PATH=$HOME/pico/pico-sdk
+        cmake .
+        make -j 4
+        sudo make install
+        sudo picotool version
+
+    # Rust is available on agent, just need to add the Pico's target
+    - name: Install Rust thumbv8m.main-none-eabihf Target
+      shell: bash
+      run: |
+        rustup target add thumbv8m.main-none-eabihf
+
+    - name: Install probe-rs
+      shell: bash
+      run: |
+        curl --proto '=https' --tlsv1.2 -LsSf https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
