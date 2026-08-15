@@ -132,11 +132,9 @@ pub async fn request_task(stack: Stack<'static>) {
             // Update predictions data if available
             if let Some(predictions) = fetched_predictions {
                 if !predictions.is_empty() {
-                    update.last_updated_secs = predictions[0].timestamp.clone();
                     update.line_name = predictions[0].line_name.clone();
                     update.platform_name = predictions[0].platform_name.clone();
                     update.station_name = predictions[0].station_name.clone();
-
                     update.arrivals = predictions;
                 }
             }
