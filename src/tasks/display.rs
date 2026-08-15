@@ -18,7 +18,7 @@
 //!
 
 use ::function_name::named;
-use core::fmt::Write;
+use core::fmt::Write as _;
 use defmt::{error, info};
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::spi;
@@ -313,14 +313,12 @@ fn show_update(
     // Bottom right, last updated
     let current_time = WALL_CLOCK.lock(|cell| {
         // borrow() gives us the &WallClock safely
-        cell.borrow().current_unix()
+        cell.borrow().current_london()
     });
 
     match current_time {
         Some(t) => {
             info!("{}: The current time is {}", function_name!(), &t);
-            let mut footer_text = String::<32>::new();
-            let _ = write!(&mut footer_text, "Updated: {}", t);
 
             // Place at bottom right (Canvas: 480x280)
             let footer_pos = Point::new(470, 270);
@@ -328,7 +326,7 @@ fn show_update(
             styles
                 .tiny_font
                 .render_aligned(
-                    footer_text.as_str(),
+                    t.as_str(),
                     footer_pos,
                     VerticalPosition::Baseline,
                     HorizontalAlignment::Right, // Anchor from right edge
