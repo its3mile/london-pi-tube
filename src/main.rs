@@ -117,7 +117,6 @@ assign_resources! {
 // as the display should always display the latest data from the request task (no stale updates)
 static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
     arrivals: Vec::new(),
-    last_updated_secs: String::<TFL_API_FIELD_STR_SIZE>::new(),
     line_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
     line_status: String::<TFL_API_FIELD_SHORT_STR_SIZE>::new(),
     platform_name: String::<TFL_API_FIELD_STR_SIZE>::new(),
@@ -268,15 +267,10 @@ async fn main(spawner: Spawner) {
     info!("{}: Starting TFL API request task...", function_name!());
     spawner.spawn(unwrap!(request_task(stack.clone())));
 
-    let blink_delay = Duration::from_millis(500);
+    let mut ticker = embassy_time::Ticker::every(Duration::from_secs(3600)); // 1 hour
     loop {
         // Keep the main task alive
-        Timer::after(blink_delay).await;
         info!("{}: Main task is running...", function_name!());
-
-        // Blink the onboard LED to show that the main task is alive
-        control.gpio_set(0, true).await;
-        Timer::after(blink_delay).await;
-        control.gpio_set(0, false).await;
+        ticker.next().await;
     }
 }

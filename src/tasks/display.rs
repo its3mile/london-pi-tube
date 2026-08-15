@@ -32,6 +32,7 @@ use epd_waveshare::color::Color;
 use epd_waveshare::epd3in7::Display3in7;
 use epd_waveshare::prelude::WaveshareDisplay;
 use heapless::String;
+use log::warn;
 use u8g2_fonts::{
     FontRenderer, fonts,
     types::{FontColor, HorizontalAlignment, VerticalPosition},
@@ -41,6 +42,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
 
 use crate::models::update::Update;
+use crate::tasks::ntp::WALL_CLOCK;
 use crate::{NOTIFY, UPDATE};
 
 /// The main display task that handles displaying sensor data and connection status
@@ -309,25 +311,36 @@ fn show_update(
     }
 
     // Bottom right, last updated
-    if !update.last_updated_secs.is_empty() {
-        let (_date, time) = split_iso8601_timestamp(update.last_updated_secs.as_str());
-        let mut footer_text = String::<32>::new();
-        let _ = write!(&mut footer_text, "Updated: {}", time);
+    let current_time = WALL_CLOCK.lock(|cell| {
+        // borrow() gives us the &WallClock safely
+        cell.borrow().current_unix()
+    });
 
-        // Place at bottom right (Canvas: 480x280)
-        let footer_pos = Point::new(470, 270);
+    match current_time {
+        Some(t) => {
+            info!("{}: The current time is {}", function_name!(), &t);
+            let mut footer_text = String::<32>::new();
+            let _ = write!(&mut footer_text, "Updated: {}", t);
 
-        styles
-            .tiny_font
-            .render_aligned(
-                footer_text.as_str(),
-                footer_pos,
-                VerticalPosition::Baseline,
-                HorizontalAlignment::Right, // Anchor from right edge
-                FontColor::Transparent(styles.colors.fg),
-                display,
-            )
-            .map_err(|_| DisplayError::RenderingFailed)?;
+            // Place at bottom right (Canvas: 480x280)
+            let footer_pos = Point::new(470, 270);
+
+            styles
+                .tiny_font
+                .render_aligned(
+                    footer_text.as_str(),
+                    footer_pos,
+                    VerticalPosition::Baseline,
+                    HorizontalAlignment::Right, // Anchor from right edge
+                    FontColor::Transparent(styles.colors.fg),
+                    display,
+                )
+                .map_err(|_| DisplayError::RenderingFailed)?;
+        }
+        None => warn!(
+            "{}: Unable to get current time - clock syncing pending...",
+            function_name!()
+        ),
     }
 
     info!("{}: Rendering update", function_name!());
@@ -393,18 +406,4 @@ pub fn first_two_words(s: &str) -> &str {
         }
     }
     s
-}
-
-pub fn split_iso8601_timestamp(s: &str) -> (&str, &str) {
-    let date_end = match s.find('T') {
-        Some(i) => i,
-        None => s.len(),
-    };
-    let time_end_wo_frac = match s.find('.') {
-        Some(i) => i,
-        None => s.len(),
-    };
-    let date = &s[..date_end];
-    let time = &s[date_end + 1..time_end_wo_frac];
-    (date, time)
 }
