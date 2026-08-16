@@ -65,21 +65,21 @@ impl TflApiRequestConfig {
     }
 }
 
-// Schedule config
-pub const AWAKE_AT: (u32, u32, u32) = (6, 30, 0);
-pub const SLEEP_AT: (u32, u32, u32) = (22, 30, 0);
+// Active/inactive schedule config
+pub const ACTIVE_AT: (u32, u32, u32) = (6, 30, 0);
+pub const INACTIVE_AT: (u32, u32, u32) = (22, 30, 0);
 
 #[derive(Clone, Copy, Format)]
 pub struct ScheduleConfig {
-    awake_at: &'static (u32, u32, u32),
-    sleep_at: &'static (u32, u32, u32),
+    pub active_at: &'static (u32, u32, u32),
+    pub inactive_at: &'static (u32, u32, u32),
 }
 
 impl ScheduleConfig {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            awake_at: &AWAKE_AT,
-            sleep_at: &SLEEP_AT,
+            active_at: &ACTIVE_AT,
+            inactive_at: &INACTIVE_AT,
         }
     }
 }
