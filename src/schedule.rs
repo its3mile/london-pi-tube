@@ -1,4 +1,7 @@
-use crate::tasks::ntp::{WALL_CLOCK, unix_to_london_time};
+use crate::{
+    config::ScheduleConfig,
+    tasks::ntp::{WALL_CLOCK, unix_to_london_time},
+};
 
 pub struct Schedule {
     // hour, minute, second
@@ -11,6 +14,13 @@ impl Schedule {
         Self {
             wake_time: wake_time,
             sleep_time: sleep_time,
+        }
+    }
+
+    pub const fn from_config(config: ScheduleConfig) -> Self {
+        Self {
+            wake_time: *config.awake_at,
+            sleep_time: *config.sleep_at,
         }
     }
 

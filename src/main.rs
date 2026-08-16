@@ -36,7 +36,7 @@ mod panic;
 mod schedule;
 mod tasks;
 
-use config::WifiConfig;
+use config::{ScheduleConfig, WifiConfig};
 
 use crate::models::update::Update;
 use crate::models::{
@@ -130,7 +130,7 @@ static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
 static NOTIFY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 // Sleep / awake schedule
-pub const SCHEDULE: Schedule = Schedule::new((6, 30, 0), (22, 30, 0));
+pub const SCHEDULE: Schedule = Schedule::from_config(ScheduleConfig::new());
 
 #[named]
 #[embassy_executor::main]
