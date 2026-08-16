@@ -24,14 +24,13 @@ use heapless::String;
 use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
+use static_cell::StaticCell;
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
 use crate::models::prediction::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
 use crate::models::status::{ARRAY_MAX_SIZE_LINE_STATUS_MODEL, Status};
-use crate::{NOTIFY, UPDATE};
-
-use static_cell::StaticCell;
+use crate::{NOTIFY, SCHEDULE, UPDATE};
 
 // Static buffers for TLS client
 static TLS_READ_BUF: StaticCell<[u8; 24576]> = StaticCell::new();
@@ -51,6 +50,14 @@ pub async fn request_task(stack: Stack<'static>) {
     let client_state = TCP_STATE.init(TcpClientState::<1, 24576, 4096>::new());
 
     loop {
+        // Handle scheduled sleep
+        {
+            let mut ticker = embassy_time::Ticker::every(Duration::from_secs(60));
+            while SCHEDULE.should_sleep() {
+                ticker.next().await;
+            }
+        }
+
         // Sleep for a while before the starting requests
         // N.B this is performed at the top of the loop, to ensure any allocated resources are dropped before sleeping
         if sleep_this_cycle {
