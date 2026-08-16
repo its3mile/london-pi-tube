@@ -33,6 +33,7 @@ use static_cell::StaticCell;
 mod config;
 mod models;
 mod panic;
+mod schedule;
 mod tasks;
 
 use config::WifiConfig;
@@ -41,6 +42,7 @@ use crate::models::update::Update;
 use crate::models::{
     TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_SHORT_STR_SIZE, TFL_API_FIELD_STR_SIZE,
 };
+use crate::schedule::Schedule;
 use crate::tasks::display::display_task;
 use crate::tasks::ntp::ntp_task;
 use crate::tasks::request::request_task;
@@ -126,6 +128,9 @@ static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
 // Atomic signal for the request task to emit, and the display task to consume
 // to know when there is new data to physically show.
 static NOTIFY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+// Sleep / awake schedule
+pub const SCHEDULE: Schedule = Schedule::new((6, 30, 0), (22, 30, 0));
 
 #[named]
 #[embassy_executor::main]

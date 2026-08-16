@@ -23,7 +23,7 @@ use defmt::{error, info};
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
-use embassy_time::Delay;
+use embassy_time::{Delay, Duration};
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
@@ -43,7 +43,7 @@ use epd_waveshare::{epd3in7::*, prelude::*};
 
 use crate::models::update::Update;
 use crate::tasks::ntp::WALL_CLOCK;
-use crate::{NOTIFY, UPDATE};
+use crate::{NOTIFY, SCHEDULE, UPDATE};
 
 /// The main display task that handles displaying sensor data and connection status
 pub type DisplayDriver = EPD3in7<
@@ -87,19 +87,34 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
 
     // Main update loop
     loop {
-        // Sleep display
-        epd_driver
-            .sleep(&mut spi_device, &mut Delay)
-            .expect("Display: Failed to put display to sleep.");
+        // Handle scheduled sleep
+        {
+            let mut ticker = embassy_time::Ticker::every(Duration::from_secs(60));
+            let mut first_sleep_cycle = true;
+
+            while SCHEDULE.should_sleep() {
+                // if this is the start of the sleep, clear the display
+                if first_sleep_cycle {
+                    let _ = display
+                        .clear(styles.colors.bg)
+                        .map_err(|_| DisplayError::RenderingFailed);
+
+                    epd_driver
+                        .update_and_display_frame(
+                            &mut spi_device,
+                            &mut display.buffer(),
+                            &mut Delay,
+                        )
+                        .expect("Display: Failed to update display with splash");
+                }
+                ticker.next().await;
+                first_sleep_cycle = false;
+            }
+        }
 
         // Acquire lock to read data update
         info!("{}: Wait for signal...", function_name!());
         NOTIFY.wait().await;
-
-        // Wake display
-        epd_driver
-            .wake_up(&mut spi_device, &mut Delay)
-            .expect("Display: Failed to wake display from sleep.");
 
         // Get update
         let update = {
