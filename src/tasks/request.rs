@@ -51,12 +51,7 @@ pub async fn request_task(stack: Stack<'static>) {
 
     loop {
         // Handle scheduled sleep
-        {
-            let mut ticker = embassy_time::Ticker::every(Duration::from_secs(60));
-            while SCHEDULE.should_sleep() {
-                ticker.next().await;
-            }
-        }
+        SCHEDULE.wait_until_active().await;
 
         // Sleep for a while before the starting requests
         // N.B this is performed at the top of the loop, to ensure any allocated resources are dropped before sleeping

@@ -23,7 +23,7 @@ use defmt::{error, info};
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
-use embassy_time::{Delay, Duration};
+use embassy_time::Delay;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
@@ -88,28 +88,17 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
     // Main update loop
     loop {
         // Handle scheduled sleep
-        {
-            let mut ticker = embassy_time::Ticker::every(Duration::from_secs(60));
-            let mut first_sleep_cycle = true;
+        if !SCHEDULE.is_active() {
+            // Clear display if about to enter sleep mode
+            let _ = display
+                .clear(styles.colors.bg)
+                .map_err(|_| DisplayError::RenderingFailed);
 
-            while SCHEDULE.should_sleep() {
-                // if this is the start of the sleep, clear the display
-                if first_sleep_cycle {
-                    let _ = display
-                        .clear(styles.colors.bg)
-                        .map_err(|_| DisplayError::RenderingFailed);
+            epd_driver
+                .update_and_display_frame(&mut spi_device, &mut display.buffer(), &mut Delay)
+                .expect("Display: Failed to update display with splash");
 
-                    epd_driver
-                        .update_and_display_frame(
-                            &mut spi_device,
-                            &mut display.buffer(),
-                            &mut Delay,
-                        )
-                        .expect("Display: Failed to update display with splash");
-                }
-                ticker.next().await;
-                first_sleep_cycle = false;
-            }
+            SCHEDULE.wait_until_active().await;
         }
 
         // Acquire lock to read data update

@@ -129,7 +129,7 @@ static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
 // to know when there is new data to physically show.
 static NOTIFY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-// Sleep / awake schedule
+// active/inactive schedule
 pub const SCHEDULE: Schedule = Schedule::from_config(ScheduleConfig::new());
 
 #[named]
