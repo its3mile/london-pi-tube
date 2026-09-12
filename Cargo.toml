@@ -120,6 +120,7 @@ embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", branch = "
 
 [target.'cfg( target_arch = "arm" )'.dependencies]
 panic-probe = { version = "1", features = ["print-defmt"] }
+rp235x-hal = { version = "0.4", features = ["rt", "critical-section-impl", "defmt"] }
 
 [target.'cfg( target_arch = "riscv32" )'.dependencies]
 panic-halt = { version = "1.0.0" }

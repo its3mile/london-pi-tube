@@ -10,12 +10,13 @@ use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::*;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
-use embassy_net::{Config, StackResources};
+use embassy_net::StackResources;
+use embassy_rp::adc::{Adc, Channel};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Input, Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0};
-use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::pio::Pio;
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
 use embassy_rp::{Peri, peripherals};
@@ -30,6 +31,7 @@ use epd_waveshare::prelude::WaveshareDisplay;
 use heapless::{String, Vec};
 use static_cell::StaticCell;
 
+mod battery;
 mod config;
 mod models;
 mod panic;
@@ -66,9 +68,14 @@ use fixed::FixedU32;
 use fixed::types::extra::U8;
 const CHIP_SPECIFIC_CLOCK_DIVIDER: FixedU32<U8> = RM2_CLOCK_DIVIDER;
 
-bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;});
+bind_interrupts!(struct NetworkIrqs {
+    PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
+    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;
+});
+
+bind_interrupts!(struct BatteryIrqs {
+    ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
+});
 
 #[embassy_executor::task]
 async fn cyw43_task(
@@ -104,6 +111,11 @@ assign_resources! {
         pin_24: PIN_24,
         pin_25: PIN_25,
         pin_29: PIN_29,
+    }
+    battery_resources: BatteryResources {
+    //     pin_24: PIN_24, // Charging status (CHRG pin)
+        pin_43: PIN_43, // Battery voltage pin (VSYS pin) (ADC3) for the RP2350B package
+        adc: ADC
     }
 }
 
@@ -192,7 +204,7 @@ async fn main(spawner: Spawner) {
     info!("{}: Initialising CYW43 Wifi chip...", function_name!());
     let pwr = Output::new(split_p.network_resources.pin_23, Level::Low);
     let cs = Output::new(split_p.network_resources.pin_25, Level::High);
-    let mut pio = Pio::new(split_p.network_resources.pio0, Irqs);
+    let mut pio = Pio::new(split_p.network_resources.pio0, NetworkIrqs);
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
@@ -201,8 +213,8 @@ async fn main(spawner: Spawner) {
         cs,
         split_p.network_resources.pin_24,
         split_p.network_resources.pin_29,
-        embassy_rp::dma::Channel::new(split_p.network_resources.dma_ch0, Irqs),
-        embassy_rp::dma::Channel::new(split_p.network_resources.dma_ch1, Irqs),
+        embassy_rp::dma::Channel::new(split_p.network_resources.dma_ch0, NetworkIrqs),
+        embassy_rp::dma::Channel::new(split_p.network_resources.dma_ch1, NetworkIrqs),
     );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
@@ -215,7 +227,7 @@ async fn main(spawner: Spawner) {
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let config = Config::dhcpv4(Default::default());
+    let config = embassy_net::Config::dhcpv4(Default::default());
 
     // Generate random seed
     let mut rng: RoscRng = RoscRng;
@@ -272,10 +284,28 @@ async fn main(spawner: Spawner) {
     info!("{}: Starting TFL API request task...", function_name!());
     spawner.spawn(unwrap!(request_task(stack.clone())));
 
-    let mut ticker = embassy_time::Ticker::every(Duration::from_secs(3600)); // 1 hour
+    let mut adc = Adc::new(
+        split_p.battery_resources.adc,
+        BatteryIrqs,
+        embassy_rp::adc::Config::default(),
+    );
+    let mut vsys_channel = Channel::new_pin(
+        split_p.battery_resources.pin_43,
+        embassy_rp::gpio::Pull::None,
+    );
+
+    let mut ticker = embassy_time::Ticker::every(Duration::from_secs(1));
     loop {
-        // Keep the main task alive
-        info!("{}: Main task is running...", function_name!());
+        // info!("{}: Main task is running...", function_name!());
+
+        let sample = adc.read(&mut vsys_channel).await.unwrap();
+        let voltage = battery::calculate_voltage(sample);
+        let percentage = battery::calculate_percentage(voltage);
+        info!(
+            "Battery Stats: {} (raw) {}v, {}%",
+            sample, voltage, percentage
+        );
+
         ticker.next().await;
     }
 }
