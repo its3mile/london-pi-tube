@@ -79,6 +79,7 @@ embedded-hal-async = "1.0"
 embedded-hal-bus = { version = "0.3", features = ["async", "defmt-03"] }
 embedded-io-async = { version = "0.7.0", features = ["defmt"] }
 embedded-storage = { version = "0.3" }
+sequential-storage = { version = "8.0.1", features = ["defmt"] }
 static_cell = "2.1"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
 log = "0.4"

@@ -10,8 +10,9 @@ MEMORY {
       /*
       * The Pimoroni Pico Plus 2W RP2350B has 16MB of QSPI flash supporting 
       * XiP, unlike the Pi Pico 2W's 4 MB on-board QSPI flash
+      * Final 64 KiB (16 erase sectors) reserved for persistent storage.
       */
-      FLASH : ORIGIN = 0x10000000, LENGTH = 16M
+      FLASH : ORIGIN = 0x10000000, LENGTH = 16320K
       /*
       * RAM consists of 8 banks, SRAM0-SRAM7, with a striped mapping.
       * This is usually good for performance, as it distributes load on

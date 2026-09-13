@@ -13,8 +13,9 @@ use embassy_executor::Spawner;
 use embassy_net::{Config, StackResources};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
+use embassy_rp::flash::{Async, Flash};
 use embassy_rp::gpio::{Input, Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0};
+use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, DMA_CH2, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
@@ -34,6 +35,7 @@ mod config;
 mod models;
 mod panic;
 mod schedule;
+mod storage;
 mod tasks;
 
 use config::{ScheduleConfig, WifiConfig};
@@ -68,7 +70,7 @@ const CHIP_SPECIFIC_CLOCK_DIVIDER: FixedU32<U8> = RM2_CLOCK_DIVIDER;
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;});
+    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>, embassy_rp::dma::InterruptHandler<DMA_CH2>;});
 
 #[embassy_executor::task]
 async fn cyw43_task(
@@ -105,6 +107,10 @@ assign_resources! {
         pin_25: PIN_25,
         pin_29: PIN_29,
     }
+    storage_resources: StorageResources {
+        flash: FLASH,
+        dma_ch2: DMA_CH2,
+    }
 }
 
 // Static for communication between tasks
@@ -138,6 +144,13 @@ async fn main(spawner: Spawner) {
     info!("{}: Starting main task...", function_name!());
     let p: embassy_rp::Peripherals = embassy_rp::init(Default::default());
     let split_p = split_resources!(p);
+    let flash: Flash<'_, embassy_rp::peripherals::FLASH, Async, { storage::FLASH_SIZE }> =
+        Flash::new(
+            split_p.storage_resources.flash,
+            split_p.storage_resources.dma_ch2,
+            Irqs,
+        );
+    storage::run_startup_test(flash).await;
     let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
