@@ -50,7 +50,8 @@ defmt-rtt = "1.0.0"
 fixed = "1.29.0"
 fixed-macro = "1.2"
 reqwless = { version = "0.14.0", default-features = false, features = [
-    "defmt", "embedded-tls"
+    "defmt",
+    "embedded-tls",
 ] }
 serde = { version = "1.0.221", default-features = false, features = ["derive"] }
 serde-json-core = { version = "0.6.0", features = [
@@ -94,7 +95,12 @@ function_name = "0.3.0"
 embedded-tls = { version = "0.18.0", default-features = false, features = [
     "rustpki", # Required to parse and cross-check the server's certificate handshake
 ] }
-der = { version = "0.8.0", default-features = false, features = ["derive", "oid", "time", "heapless"] }
+der = { version = "0.8.0", default-features = false, features = [
+    "derive",
+    "oid",
+    "time",
+    "heapless",
+] }
 embedded-iconoir = { version = "0.2.3", features = ["18px", "48px"] }
 sntpc-net-embassy = "0.11.0"
 sntpc = "0.11.0"
@@ -117,6 +123,8 @@ embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", branch =
 cyw43-pio = { git = "https://github.com/embassy-rs/embassy", branch = "main" }
 embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", branch = "main" }
 
+# Transitive dependency, original is unmaintained, use community fork (https://rustsec.org/advisories/RUSTSEC-2026-0173)
+proc-macro-error2 = { git = "https://github.com/Nuvai/proc-macro-error-2", rev = "24962c19bac89c580a9831ffc81dbfe00b17c37a" }
 
 [target.'cfg( target_arch = "arm" )'.dependencies]
 panic-probe = { version = "1", features = ["print-defmt"] }
