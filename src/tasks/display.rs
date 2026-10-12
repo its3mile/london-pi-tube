@@ -23,7 +23,7 @@ use defmt::{error, info};
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
-use embassy_time::Delay;
+use embassy_time::{Delay, Timer};
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
@@ -70,6 +70,7 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
     // Create a Display buffer to draw on, specific for this ePaper
     info!("{}: Initialising display buffer", function_name!());
     let mut display = Display3in7::default();
+    let mut display_is_asleep = false;
 
     // Landscape mode, USB plug to the right
     display.set_rotation(DisplayRotation::Rotate270);
@@ -89,16 +90,30 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
     loop {
         // Handle scheduled sleep
         if !SCHEDULE.is_active() {
-            // Clear display if about to enter sleep mode
-            let _ = display
-                .clear(styles.colors.bg)
-                .map_err(|_| DisplayError::RenderingFailed);
-
-            epd_driver
-                .update_and_display_frame(&mut spi_device, &mut display.buffer(), &mut Delay)
-                .expect("Display: Failed to update display with splash");
+            if !display_is_asleep {
+                let _ = display
+                    .clear(styles.colors.bg)
+                    .map_err(|_| DisplayError::RenderingFailed);
+                epd_driver
+                    .update_and_display_frame(&mut spi_device, &mut display.buffer(), &mut Delay)
+                    .unwrap_or_else(|_| {
+                        error!("{}: Failed to clear display before sleep", function_name!())
+                    });
+                epd_driver
+                    .sleep(&mut spi_device, &mut Delay)
+                    .unwrap_or_else(|_| error!("{}: Failed to sleep display", function_name!()));
+                display_is_asleep = true;
+            }
 
             SCHEDULE.wait_until_active().await;
+            continue;
+        }
+
+        if display_is_asleep {
+            epd_driver
+                .wake_up(&mut spi_device, &mut Delay)
+                .unwrap_or_else(|_| error!("{}: Failed to wake display", function_name!()));
+            display_is_asleep = false;
         }
 
         // Acquire lock to read data update
@@ -119,6 +134,23 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
         show_update(&mut display, &mut epd_driver, &mut spi_device, update)
             .unwrap_or_else(|_| error!("{}: Failed to show update", function_name!()));
         info!("{}: Finished rendering update", function_name!());
+
+        // Keep the panel asleep between refresh cycles to save power.
+        if !display_is_asleep {
+            epd_driver
+                .sleep(&mut spi_device, &mut Delay)
+                .unwrap_or_else(|_| error!("{}: Failed to sleep display", function_name!()));
+            display_is_asleep = true;
+        }
+
+        Timer::after_secs(30).await;
+
+        if display_is_asleep {
+            epd_driver
+                .wake_up(&mut spi_device, &mut Delay)
+                .unwrap_or_else(|_| error!("{}: Failed to wake display", function_name!()));
+            display_is_asleep = false;
+        }
     }
 }
 
