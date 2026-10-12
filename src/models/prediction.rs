@@ -29,6 +29,7 @@ pub struct Prediction {
     pub vehicle_id: String<TFL_API_FIELD_STR_SIZE>,
     // pub naptan_id: String<TFL_API_FIELD_STR_SIZE>,
     pub station_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
+    #[serde(default = "default_tfl_api_string")]
     pub destination_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
     // pub line_id: String<TFL_API_FIELD_STR_SIZE>,
     pub line_name: String<TFL_API_FIELD_STR_SIZE>,
@@ -58,3 +59,7 @@ pub struct Prediction {
 //     pub sent: String<TFL_API_FIELD_STR_SIZE>,
 //     pub received: String<TFL_API_FIELD_STR_SIZE>,
 // }
+
+fn default_tfl_api_string() -> String<TFL_API_FIELD_LONG_STR_SIZE> {
+    String::try_from("N/A").unwrap_or_default()
+}
