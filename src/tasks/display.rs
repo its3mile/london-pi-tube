@@ -13,7 +13,7 @@
 //! |  7 mins      Upminster                                      |
 //! |                                                             |
 //! |                                                             |
-//! | Good Service                                 Updated: 15:43 |
+//! | 15:43:15                                    Good Service :) |
 //! +-------------------------------------------------------------+
 //!
 
@@ -282,28 +282,34 @@ fn show_update(
         }
     }
 
-    // Bottom left, line status indicator
-    // Anchor position for the footer status icon (Bottom Left)
-    let icon_pos = display.bounding_box().top_left + Point::new(4, 228);
+    let display_bounds = display.bounding_box();
+    let icon_pos = display_bounds.top_left
+        + Point::new(
+            display_bounds.size.width as i32 - 52,
+            display_bounds.size.height as i32 - 52,
+        );
 
-    match update.line_status.as_str() {
+    let status_label = match update.line_status.as_str() {
         s if s.contains("Severe") || s.contains("Suspended") => {
             let icon = icons::size48px::emojis::EmojiSad::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
+            "Severe\nDelays"
         }
         s if s.contains("Minor") || s.contains("Delay") => {
             let icon = icons::size48px::emojis::EmojiQuite::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
+            "Minor\nDelays"
         }
         "Good Service" => {
             let icon = icons::size48px::emojis::Emoji::new(BinaryColor::On);
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
+            "Good\nService"
         }
         _ => {
             // Fallback warning triangle for anything else
@@ -311,10 +317,27 @@ fn show_update(
             Image::new(&icon, icon_pos)
                 .draw(&mut display.color_converted())
                 .ok();
+            "Other\nStatus"
         }
-    }
+    };
 
-    // Bottom right, last updated
+    styles
+        .regular_text_font
+        .render_aligned(
+            status_label,
+            display_bounds.top_left
+                + Point::new(
+                    display_bounds.size.width as i32 - 60,
+                    display_bounds.size.height as i32 - 33,
+                ),
+            VerticalPosition::Baseline,
+            HorizontalAlignment::Right,
+            FontColor::Transparent(styles.colors.fg),
+            display,
+        )
+        .map_err(|_| DisplayError::RenderingFailed)?;
+
+    // Bottom left, last updated
     let current_time = WALL_CLOCK.lock(|cell| {
         // borrow() gives us the &WallClock safely
         cell.borrow().current_london()
@@ -324,16 +347,16 @@ fn show_update(
         Some(t) => {
             info!("{}: The current time is {}", function_name!(), &t);
 
-            // Place at bottom right (Canvas: 480x280)
-            let footer_pos = Point::new(470, 270);
+            let mut footer_text = String::<32>::new();
+            let _ = write!(&mut footer_text, "{}", t.as_str());
 
             styles
-                .tiny_font
+                .footer_time_font
                 .render_aligned(
-                    t.as_str(),
-                    footer_pos,
+                    footer_text.as_str(),
+                    display_bounds.top_left + Point::new(10, display_bounds.size.height as i32 - 8),
                     VerticalPosition::Baseline,
-                    HorizontalAlignment::Right, // Anchor from right edge
+                    HorizontalAlignment::Left,
                     FontColor::Transparent(styles.colors.fg),
                     display,
                 )
@@ -365,10 +388,10 @@ pub struct DisplayStyles {
     pub colors: DisplayColors,
     pub header_font: FontRenderer,
     pub time_font: FontRenderer,
+    pub footer_time_font: FontRenderer,
     pub bold_text_font: FontRenderer,
     pub regular_text_font: FontRenderer,
     pub splash_font: FontRenderer,
-    pub tiny_font: FontRenderer,
 }
 
 impl DisplayStyles {
@@ -382,10 +405,10 @@ impl DisplayStyles {
             colors,
             header_font: FontRenderer::new::<fonts::u8g2_font_helvB14_tf>(),
             time_font: FontRenderer::new::<fonts::u8g2_font_logisoso24_tf>(),
+            footer_time_font: FontRenderer::new::<fonts::u8g2_font_logisoso18_tf>(),
             bold_text_font: FontRenderer::new::<fonts::u8g2_font_logisoso24_tf>(),
             regular_text_font: FontRenderer::new::<fonts::u8g2_font_helvR14_tf>(),
             splash_font: FontRenderer::new::<fonts::u8g2_font_logisoso32_tf>(),
-            tiny_font: FontRenderer::new::<fonts::u8g2_font_helvR10_tf>(),
         }
     }
 }
