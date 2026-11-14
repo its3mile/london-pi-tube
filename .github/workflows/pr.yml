@@ -35,8 +35,20 @@ jobs:
         env:
           WIFI_SSID: ${{ secrets.WIFI_SSID }}
           WIFI_PASSWORD: ${{ secrets.WIFI_PASSWORD }}
+          TFL_API_KEY: ${{ secrets.TFL_API_KEY }}
         run: |
-          sed 's/"your-ssid"/"'"$WIFI_SSID"'"/g; s/r"your-wifi-password"/r"'"$WIFI_PASSWORD"'"/g' firmware/config.template.rs > firmware/src/config.rs
+          # Fail the build rather than ship firmware that can never connect to
+          # Wi-Fi or fetch data (TfL rejects an empty key). Secrets are also
+          # unavailable to pull requests from forks.
+          missing=0
+          for name in WIFI_SSID WIFI_PASSWORD TFL_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::The $name secret is not set."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          sed 's/"your-ssid"/"'"$WIFI_SSID"'"/g; s/r"your-wifi-password"/r"'"$WIFI_PASSWORD"'"/g; s/"your-tfl-api-key"/"'"$TFL_API_KEY"'"/g' firmware/config.template.rs > firmware/src/config.rs
 
       - name: Build (release)
         run: |

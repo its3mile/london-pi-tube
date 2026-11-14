@@ -40,7 +40,7 @@ impl ProxyConfig {
 }
 
 // TFL API request information
-pub const API_PRIMARY_KEY: &str = "";
+pub const API_PRIMARY_KEY: &str = "your-tfl-api-key";
 pub const LINE_ID: &str = "district";
 pub const PLATFORM_NAME: &str = "Platform 1";
 pub const STOPCODE: &str = "940GZZLUEPY";
