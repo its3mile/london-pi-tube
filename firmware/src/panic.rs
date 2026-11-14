@@ -1,10 +1,22 @@
+//! Panic handler: show the panic on the display, then restart the device.
+//!
+//! The device is not physically accessible once installed, so a panic must
+//! never leave it hung. Every path out of this handler ends in a reset:
+//!
+//! - Normal case: the message is logged and drawn, held on screen for
+//!   [`RESTART_DELAY_SECS`], then the device restarts.
+//! - The handler hangs (e.g. the display never releases its busy line): the
+//!   hardware watchdog, armed first thing, resets the chip after
+//!   [`WATCHDOG_TIMEOUT`].
+//! - The handler itself panics: restart immediately.
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::error;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::spi::{Blocking, Spi};
-use embassy_time::Delay;
+use embassy_rp::watchdog::Watchdog;
+use embassy_time::{Delay, Duration, block_for};
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::text::Baseline;
 use embedded_graphics::{
@@ -28,14 +40,27 @@ static PANICKING: AtomicBool = AtomicBool::new(false);
 // Maximum length for panic message
 const MAX_MESSAGE_LEN: usize = 200;
 
+/// How long the panic message stays on the display before the device restarts.
+const RESTART_DELAY_SECS: u32 = 60;
+
+/// Deadman timeout while the handler runs: if any single step takes longer
+/// than this, the watchdog resets the chip. Must exceed a full e-paper refresh
+/// (a few seconds) and stay under the RP2350 watchdog maximum (~16.7 s).
+const WATCHDOG_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // Make sure we only panic once
+    // A panic inside this handler means showing the message is not possible
+    // (e.g. the display failed to initialise): restart straight away.
     if PANICKING.swap(true, Ordering::SeqCst) {
-        loop {
-            cortex_m::asm::wfe();
-        }
+        restart();
     }
+
+    // Arm the watchdog before anything that could hang or panic.
+    // Safety: we are panicking and never return to the code that owned these peripherals.
+    let p = unsafe { embassy_rp::Peripherals::steal() };
+    let mut watchdog = Watchdog::new(p.WATCHDOG);
+    watchdog.start(WATCHDOG_TIMEOUT);
 
     // Create panic message
     let mut message: String<MAX_MESSAGE_LEN> = String::new();
@@ -53,6 +78,9 @@ fn panic(info: &PanicInfo) -> ! {
     }
     write!(message, "{}", info.message()).ok();
 
+    // The display is cleared by the restart, so the log is the lasting record.
+    error!("{}", message.as_str());
+
     // Re-Initialize display with the known pins (unsafe inside, but we're panicking, so what can we do ;-))
     let (epd, spidev) = init_display();
     let mut display = Display3in7::default();
@@ -60,19 +88,38 @@ fn panic(info: &PanicInfo) -> ! {
 
     display.set_rotation(DisplayRotation::Rotate270);
 
+    watchdog.feed(WATCHDOG_TIMEOUT);
     epd.wake_up(spidev, &mut embassy_time::Delay)
         .unwrap_or_else(|_| error!("can't wake up display for panic"));
     render_panic_message(&mut display, &message);
+
+    watchdog.feed(WATCHDOG_TIMEOUT);
     epd.update_and_display_frame(spidev, &display.buffer(), &mut embassy_time::Delay)
         .unwrap_or_else(|_| error!("can't update display for panic"));
 
+    watchdog.feed(WATCHDOG_TIMEOUT);
     epd.sleep(spidev, &mut delay)
         .unwrap_or_else(|_| error!("can't sleep display"));
 
-    // Hang in an infinite loop
-    loop {
-        cortex_m::asm::wfe();
+    // Leave the message up long enough to be read, feeding the watchdog so
+    // that it only fires if this loop itself stalls.
+    for _ in 0..RESTART_DELAY_SECS {
+        watchdog.feed(WATCHDOG_TIMEOUT);
+        block_for(Duration::from_secs(1));
     }
+
+    restart()
+}
+
+/// Restart the device. Never returns.
+fn restart() -> ! {
+    // Safety: we are panicking and never return to the code that owned the watchdog.
+    let mut watchdog = Watchdog::new(unsafe { embassy_rp::peripherals::WATCHDOG::steal() });
+    // Resets the whole chip (everything except the oscillators).
+    watchdog.trigger_reset();
+    // The watchdog reset takes effect within a few cycles; this is a fallback
+    // that also never returns.
+    cortex_m::peripheral::SCB::sys_reset()
 }
 
 /// Initialize display  for panic handler
@@ -132,7 +179,13 @@ fn render_panic_message(display: &mut Display3in7, message: &str) {
         .build();
 
     // Display title
-    Text::with_text_style("SYSTEM PANIC", Point::new(10, 20), style, text_style)
+    let mut title = String::<48>::new();
+    let _ = write!(
+        title,
+        "SYSTEM PANIC - restarting in {}s",
+        RESTART_DELAY_SECS
+    );
+    Text::with_text_style(&title, Point::new(10, 20), style, text_style)
         .draw(display)
         .ok();
 

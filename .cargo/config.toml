@@ -45,7 +45,8 @@ rustflags = [
 #
 # Load an elf, skipping unchanged flash sectors, verify it, and execute it
 # runner = "picotool load -u -v -x -t elf"
-runner = "probe-rs run --chip ${CHIP} --protocol swd"
+# N.B. Cargo does not expand environment variables here, so the chip is named explicitly.
+runner = "probe-rs run --chip RP2040 --protocol swd"
 
 # This is the hard-float ABI for Arm mode.
 #
@@ -62,6 +63,12 @@ runner = "probe-rs run --chip ${CHIP} --protocol swd"
 #   the particular memory layout for your specific chip. 
 # * linker argument -Tdefmt.x also tells the linker to use `defmt.x` as a
 #   secondary linker script. This is required to make defmt_rtt work.
+#
+# flip-link (`cargo install flip-link`) places the stack *below* the statics
+# instead of above them. A stack overflow then runs off the start of RAM and
+# raises a HardFault immediately, rather than silently corrupting statics.
+# See firmware/src/fault.rs for what happens next.
+linker = "flip-link"
 rustflags = [
     "-C",
     "link-arg=--nmagic",
@@ -77,7 +84,8 @@ rustflags = [
 #
 # Load an elf, skipping unchanged flash sectors, verify it, and execute it
 # runner = "picotool load -u -v -x -t elf"
-runner = "probe-rs run --chip ${CHIP} --protocol swd"
+# N.B. Cargo does not expand environment variables here, so the chip is named explicitly.
+runner = "probe-rs run --chip RP235x --protocol swd"
 
 # This is the soft-float ABI for RISC-V mode.
 #
@@ -107,7 +115,8 @@ rustflags = [
 #
 # Load an elf, skipping unchanged flash sectors, verify it, and execute it
 # runner = "picotool load -u -v -x -t elf"
-runner = "probe-rs run --chip ${CHIP} --protocol swd"
+# N.B. Cargo does not expand environment variables here, so the chip is named explicitly.
+runner = "probe-rs run --chip RP235x --protocol swd"
 
 [alias]
 # Run the hardware-independent unit tests on the development machine.

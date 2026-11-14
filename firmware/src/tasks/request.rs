@@ -25,7 +25,7 @@ use heapless::String;
 use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
-use static_cell::StaticCell;
+use static_cell::ConstStaticCell;
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
@@ -56,12 +56,20 @@ const TCP_TX_BUF_SIZE: usize = 4 * 1024;
 const HTTP_RX_BUF_SIZE: usize = 32 * 1024;
 
 // Static buffers for the HTTP/TLS client, all in SRAM.
-static HTTP_RX_BUF: StaticCell<[u8; HTTP_RX_BUF_SIZE]> = StaticCell::new();
-static TLS_READ_BUF: StaticCell<[u8; TLS_READ_BUF_SIZE]> = StaticCell::new();
-static TLS_WRITE_BUF: StaticCell<[u8; TLS_WRITE_BUF_SIZE]> = StaticCell::new();
+//
+// These are `ConstStaticCell`s, initialised at compile time directly in the
+// static. Do not switch to `StaticCell::init(value)`: that builds the value on
+// the stack first, and unoptimised (debug) builds keep several copies of it
+// there, which for buffers this size overflows the stack into the statics.
+static HTTP_RX_BUF: ConstStaticCell<[u8; HTTP_RX_BUF_SIZE]> =
+    ConstStaticCell::new([0; HTTP_RX_BUF_SIZE]);
+static TLS_READ_BUF: ConstStaticCell<[u8; TLS_READ_BUF_SIZE]> =
+    ConstStaticCell::new([0; TLS_READ_BUF_SIZE]);
+static TLS_WRITE_BUF: ConstStaticCell<[u8; TLS_WRITE_BUF_SIZE]> =
+    ConstStaticCell::new([0; TLS_WRITE_BUF_SIZE]);
 // N.B. the generic order is <N, TX_SZ, RX_SZ>.
-static TCP_STATE: StaticCell<TcpClientState<1, TCP_TX_BUF_SIZE, TCP_RX_BUF_SIZE>> =
-    StaticCell::new();
+static TCP_STATE: ConstStaticCell<TcpClientState<1, TCP_TX_BUF_SIZE, TCP_RX_BUF_SIZE>> =
+    ConstStaticCell::new(TcpClientState::new());
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
@@ -69,10 +77,10 @@ pub async fn request_task(stack: Stack<'static>) {
     let mut rng: RoscRng = RoscRng;
     let mut sleep_this_cycle: bool = false;
 
-    let rx_buffer = HTTP_RX_BUF.init([0; HTTP_RX_BUF_SIZE]);
-    let tls_read_buffer = TLS_READ_BUF.init([0; TLS_READ_BUF_SIZE]);
-    let tls_write_buffer = TLS_WRITE_BUF.init([0; TLS_WRITE_BUF_SIZE]);
-    let client_state = TCP_STATE.init(TcpClientState::<1, TCP_TX_BUF_SIZE, TCP_RX_BUF_SIZE>::new());
+    let rx_buffer = HTTP_RX_BUF.take();
+    let tls_read_buffer = TLS_READ_BUF.take();
+    let tls_write_buffer = TLS_WRITE_BUF.take();
+    let client_state = TCP_STATE.take();
 
     loop {
         // Handle scheduled sleep

@@ -36,6 +36,12 @@ runs:
       run: |
         rustup target add thumbv8m.main-none-eabihf
 
+    # Linker wrapper used for the firmware target (see .cargo/config.toml)
+    - name: Install flip-link
+      shell: bash
+      run: |
+        cargo install flip-link --locked
+
     - name: Install probe-rs
       shell: bash
       run: |
