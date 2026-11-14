@@ -26,7 +26,26 @@ MEMORY {
       */
       SRAM4 : ORIGIN = 0x20080000, LENGTH = 4K
       SRAM5 : ORIGIN = 0x20081000, LENGTH = 4K
+      /*
+      * The Pimoroni Pico Plus 2W has 8MB of APS6404L QSPI PSRAM on QMI chip
+      * select 1 (GPIO 47), memory-mapped through the XIP cache.
+      */
+      PSRAM : ORIGIN = 0x11000000, LENGTH = 8M
   }
+
+  SECTIONS {
+      /* ### PSRAM
+      *
+      * NOLOAD: the startup code neither zeroes nor copies anything here,
+      * because the PSRAM only works once the firmware has initialised it
+      * (see firmware/src/psram.rs). Statics in this section must be
+      * `MaybeUninit` and written before they are first read.
+      */
+      .psram (NOLOAD) : ALIGN(4)
+      {
+          *(.psram .psram.*);
+      } > PSRAM
+  } INSERT AFTER .uninit;
 
   SECTIONS {
       /* ### Boot ROM info

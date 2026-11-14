@@ -66,17 +66,18 @@ pub type DisplaySpiDevice = ExclusiveDevice<
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
-pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: DisplaySpiDevice) {
-    // Create a Display buffer to draw on, specific for this ePaper
-    info!("{}: Initialising display buffer", function_name!());
-    let mut display = Display3in7::default();
-
+/// `display` is the frame buffer, allocated in PSRAM by `main`.
+pub async fn display_task(
+    display: &'static mut Display3in7,
+    mut epd_driver: DisplayDriver,
+    mut spi_device: DisplaySpiDevice,
+) {
     // Landscape mode, USB plug to the right
     display.set_rotation(DisplayRotation::Rotate270);
 
     // Render splash drawing
     info!("{}: Rendering splash drawing", function_name!());
-    show_splash(&mut display, &mut epd_driver, &mut spi_device)
+    show_splash(display, &mut epd_driver, &mut spi_device)
         .unwrap_or_else(|_| error!("{}: Failed to show splash", function_name!()));
     info!(
         "{}: Display updated with splash and ready for use",
@@ -116,7 +117,7 @@ pub async fn display_task(mut epd_driver: DisplayDriver, mut spi_device: Display
         let _ = display
             .clear(styles.colors.bg)
             .map_err(|_| DisplayError::RenderingFailed);
-        show_update(&mut display, &mut epd_driver, &mut spi_device, update)
+        show_update(display, &mut epd_driver, &mut spi_device, update)
             .unwrap_or_else(|_| error!("{}: Failed to show update", function_name!()));
         info!("{}: Finished rendering update", function_name!());
     }
