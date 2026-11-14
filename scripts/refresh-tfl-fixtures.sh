@@ -6,7 +6,7 @@
 # platforms) are tied to the captured data and will need updating; all other
 # tests should pass against any fresh capture.
 #
-# Usage: scripts/refresh-tfl-fixtures.sh [api_key]
+# Usage: scripts/refresh-tfl-fixtures.sh [app_key]
 set -euo pipefail
 
 dir="$(cd "$(dirname "$0")/.." && pwd)/application/tests/fixtures/live"

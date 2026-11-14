@@ -12,6 +12,7 @@
 //! Buffer sizes are carefully selected to support the Pimoroni Pico Plus 2W.
 //!  
 use ::function_name::named;
+use application::tfl::{parse_line_status, parse_predictions};
 use core::fmt::Write;
 use defmt::{debug, error, info, warn};
 use embassy_net::Stack;
@@ -25,7 +26,6 @@ use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
 use static_cell::StaticCell;
-use application::tfl::{parse_line_status, parse_predictions};
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
@@ -172,7 +172,7 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
     let mut url_buffer: String<256> = String::new();
     let url = match write!(
         &mut url_buffer,
-        "{}/StopPoint/{}/Arrivals?api_key={}",
+        "{}/StopPoint/{}/Arrivals?app_key={}",
         proxy_config.http_proxy,
         tfl_api_request_config.stopcode,
         tfl_api_request_config.api_primary_key
@@ -270,7 +270,7 @@ pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
     // Assuming tfl_api_request_config contains or can provide your target line ID
     let url = match write!(
         &mut url_buffer,
-        "{}/Line/{}/Status?api_key={}",
+        "{}/Line/{}/Status?app_key={}",
         proxy_config.http_proxy,
         tfl_api_request_config.line_id,
         tfl_api_request_config.api_primary_key
