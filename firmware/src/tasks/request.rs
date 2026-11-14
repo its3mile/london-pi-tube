@@ -32,11 +32,36 @@ use crate::config::TflApiRequestConfig;
 use crate::models::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Line, Prediction};
 use crate::{NOTIFY, SCHEDULE, UPDATE};
 
-// Static buffers for TLS client
-static TLS_READ_BUF: StaticCell<[u8; 24576]> = StaticCell::new();
-static TLS_WRITE_BUF: StaticCell<[u8; 16640]> = StaticCell::new();
-static HTTP_RX_BUF: StaticCell<[u8; 16384]> = StaticCell::new();
-static TCP_STATE: StaticCell<TcpClientState<1, 24576, 4096>> = StaticCell::new();
+/// TLS record read buffer. embedded-tls reads one record at a time, and an
+/// encrypted record is at most 16,640 bytes (2^14 + 256), so anything above
+/// that is headroom rather than throughput.
+const TLS_READ_BUF_SIZE: usize = 32 * 1024;
+
+/// TLS record write buffer. embedded-tls fills each outgoing record up to this
+/// size minus `TLS_RECORD_OVERHEAD` (128), and TLS caps record plaintext at
+/// 2^14 bytes, so do not exceed 2^14 + 128 or large writes become oversized
+/// records that the server rejects (`record_overflow`).
+const TLS_WRITE_BUF_SIZE: usize = (1 << 14) + embedded_tls::TLS_RECORD_OVERHEAD;
+
+/// TCP receive buffer: bounds the window the server can send into before
+/// waiting for an ACK. Responses are tens of KB, so keep this large.
+const TCP_RX_BUF_SIZE: usize = 32 * 1024;
+
+/// TCP transmit buffer: requests are a few hundred bytes of HTTP GET.
+const TCP_TX_BUF_SIZE: usize = 4 * 1024;
+
+/// HTTP response buffer, holding the headers and the whole body. Arrivals
+/// responses are roughly 1 KB per listed train; a body that does not fit fails
+/// with `BufferTooSmall`.
+const HTTP_RX_BUF_SIZE: usize = 32 * 1024;
+
+// Static buffers for the HTTP/TLS client, all in SRAM.
+static HTTP_RX_BUF: StaticCell<[u8; HTTP_RX_BUF_SIZE]> = StaticCell::new();
+static TLS_READ_BUF: StaticCell<[u8; TLS_READ_BUF_SIZE]> = StaticCell::new();
+static TLS_WRITE_BUF: StaticCell<[u8; TLS_WRITE_BUF_SIZE]> = StaticCell::new();
+// N.B. the generic order is <N, TX_SZ, RX_SZ>.
+static TCP_STATE: StaticCell<TcpClientState<1, TCP_TX_BUF_SIZE, TCP_RX_BUF_SIZE>> =
+    StaticCell::new();
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
@@ -44,10 +69,10 @@ pub async fn request_task(stack: Stack<'static>) {
     let mut rng: RoscRng = RoscRng;
     let mut sleep_this_cycle: bool = false;
 
-    let tls_read_buffer = TLS_READ_BUF.init([0; 24576]);
-    let tls_write_buffer = TLS_WRITE_BUF.init([0; 16640]);
-    let rx_buffer = HTTP_RX_BUF.init([0; 16384]);
-    let client_state = TCP_STATE.init(TcpClientState::<1, 24576, 4096>::new());
+    let rx_buffer = HTTP_RX_BUF.init([0; HTTP_RX_BUF_SIZE]);
+    let tls_read_buffer = TLS_READ_BUF.init([0; TLS_READ_BUF_SIZE]);
+    let tls_write_buffer = TLS_WRITE_BUF.init([0; TLS_WRITE_BUF_SIZE]);
+    let client_state = TCP_STATE.init(TcpClientState::<1, TCP_TX_BUF_SIZE, TCP_RX_BUF_SIZE>::new());
 
     loop {
         // Handle scheduled sleep
@@ -162,8 +187,8 @@ pub async fn request_task(stack: Stack<'static>) {
 }
 
 #[named]
-async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
-    http_client: &mut HttpClient<'_, TcpClient<'_, 1, RX_SZ, TX_SZ>, DnsSocket<'_>>,
+async fn request_prediction<const TX_SZ: usize, const RX_SZ: usize>(
+    http_client: &mut HttpClient<'_, TcpClient<'_, 1, TX_SZ, RX_SZ>, DnsSocket<'_>>,
     rx_buffer: &mut [u8],
 ) -> Option<Vec<Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL>> {
     // define the URL for the TFL API request
@@ -212,8 +237,9 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
     // Read response body
     let body = match response.body().read_to_end().await {
         Ok(body) => body,
-        Err(_) => {
-            error!("{}: Failed to read response body", function_name!());
+        Err(e) => {
+            // `BufferTooSmall` means the response exceeded HTTP_RX_BUF_SIZE.
+            error!("{}: Failed to read response body: {}", function_name!(), e);
             return None;
         }
     };
@@ -257,8 +283,8 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
 }
 
 #[named]
-pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
-    http_client: &mut HttpClient<'_, TcpClient<'_, 1, RX_SZ, TX_SZ>, DnsSocket<'_>>,
+pub async fn request_status<const TX_SZ: usize, const RX_SZ: usize>(
+    http_client: &mut HttpClient<'_, TcpClient<'_, 1, TX_SZ, RX_SZ>, DnsSocket<'_>>,
     rx_buffer: &mut [u8],
 ) -> Option<Line> {
     // 1. Dynamic URL Generation mirroring request_prediction
@@ -309,8 +335,9 @@ pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
     // 4. Read response body
     let body = match response.body().read_to_end().await {
         Ok(body) => body,
-        Err(_) => {
-            error!("{}: Failed to read response body", function_name!());
+        Err(e) => {
+            // `BufferTooSmall` means the response exceeded HTTP_RX_BUF_SIZE.
+            error!("{}: Failed to read response body: {}", function_name!(), e);
             return None;
         }
     };
