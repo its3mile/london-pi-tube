@@ -31,6 +31,7 @@ use heapless::{String, Vec};
 use static_cell::StaticCell;
 
 mod config;
+mod fault;
 mod models;
 mod panic;
 #[macro_use]
@@ -205,6 +206,32 @@ async fn main(spawner: Spawner) {
 
     // Allow display task to run and show splash before continuing setup
     Timer::after_millis(500).await;
+
+    // Test builds only: exercise the panic handler. Expect the panic screen,
+    // then a restart back to the splash, repeating until normal firmware is flashed.
+    #[cfg(feature = "stack-overflow-test")]
+    {
+        // Test builds only: overflow the stack to exercise flip-link and the
+        // HardFault handler. Expect a "HardFault: stack overflow" panic screen,
+        // then a restart, repeating until normal firmware is flashed.
+        #[allow(unconditional_recursion)]
+        fn recurse(depth: u32) -> u32 {
+            let pad = core::hint::black_box([depth as u8; 1024]);
+            recurse(depth + 1) + pad[0] as u32
+        }
+        Timer::after_secs(5).await;
+        info!("{}: overflowing the stack...", function_name!());
+        core::hint::black_box(recurse(0));
+    }
+
+    #[cfg(feature = "panic-restart-test")]
+    {
+        Timer::after_secs(5).await;
+        // `black_box` keeps the compiler from flagging the rest of `main` as unreachable.
+        if core::hint::black_box(true) {
+            core::panic!("panic-restart-test: deliberate panic to test the restart");
+        }
+    }
 
     // Setup the CYW43 Wifi chip
     info!("{}: Initialising CYW43 Wifi chip...", function_name!());

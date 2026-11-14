@@ -19,6 +19,16 @@ bench = false
 name = "run_tests_on_host"
 harness = false
 
+[features]
+# Test builds only: panic deliberately a few seconds after boot, to exercise
+# the panic handler's display-then-restart path (see src/panic.rs).
+#   cargo run --release --features panic-restart-test
+panic-restart-test = []
+# Test builds only: overflow the stack a few seconds after boot, to exercise
+# flip-link and the HardFault handler (see src/fault.rs).
+#   cargo run --release --features stack-overflow-test
+stack-overflow-test = []
+
 [build-dependencies]
 regex = "1.12.2"
 

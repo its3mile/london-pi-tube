@@ -2,8 +2,8 @@
 //!
 //! The window maths lives in `application::schedule` (host-tested); this wrapper
 //! only supplies the current time and the async wait.
-use embassy_time::Timer;
 use application::schedule::{ActiveWindow, hms_to_seconds};
+use embassy_time::Timer;
 
 use crate::{
     config::ScheduleConfig,
