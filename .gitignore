@@ -110,4 +110,5 @@ $RECYCLE.BIN/
 
 
 # build time configuration file that may contain secrets.
-src/config.rs
+firmware/src/config.rs
+application/tests/fixtures/live/

@@ -20,7 +20,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${command:raspberry-pi-pico.launchTargetPath}",
+          "programBinary": "${workspaceFolder}/target/thumbv8m.main-none-eabihf/debug/london-pi-tube",
           "rttEnabled": true,
           "svdFile": "${command:raspberry-pi-pico.getSVDPath}",
           "rttChannelFormats": [
@@ -56,7 +56,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${command:raspberry-pi-pico.launchTargetPath}",
+          "programBinary": "${workspaceFolder}/target/thumbv8m.main-none-eabihf/release/london-pi-tube",
           "rttEnabled": true,
           "svdFile": "${command:raspberry-pi-pico.getSVDPath}",
           "rttChannelFormats": [

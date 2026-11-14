@@ -1,110 +1,24 @@
-[package]
-name = "london-pi-tube"
+[workspace]
+resolver = "3"
+members = ["firmware", "application"]
+# Plain `cargo build` / `cargo run` / `cargo test` from the root act on the
+# firmware. `application` is still built as a firmware dependency.
+default-members = ["firmware"]
+# Vendored firmware blobs; has its own manifest but is not part of the build.
+exclude = ["firmware/cyw43-firmware"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT or Apache-2.0"
+license = "MIT OR Apache-2.0"
 
-[build-dependencies]
-regex = "1.12.2"
-
-[dependencies]
-embassy-embedded-hal = { version = "0.6.0", features = ["defmt"] }
-embassy-sync = { version = "0.8.0", features = ["defmt"] }
-embassy-executor = { version = "0.10.0", features = [
-    "platform-cortex-m",
-    "executor-thread",
-    "executor-interrupt",
-    "defmt",
-] }
-embassy-time = { version = "0.5.1", features = [
-    "defmt",
-    "defmt-timestamp-uptime",
-] }
-embassy-rp = { version = "0.10.0", features = [
-    "defmt",
-    "unstable-pac",
-    "time-driver",
-    "critical-section-impl",
-    "rp235xb",
-    "binary-info",
-] }
-rp-pac = { version = "7.0.0", features = ["rp235x"] }
-embassy-usb = { version = "0.6.0", features = ["defmt"] }
-embassy-net = { version = "0.9.1", features = [
-    "defmt",
-    "icmp",
-    "tcp",
-    "udp",
-    "raw",
-    "dhcpv4",
-    "medium-ethernet",
-    "dns",
-] }
-embassy-net-wiznet = { version = "0.3.0", features = ["defmt"] }
-embassy-futures = { version = "0.1.2" }
-embassy-usb-logger = "0.6.0"
-cyw43 = { version = "0.7.0", features = ["defmt", "firmware-logs"] }
-cyw43-pio = { version = "0.10.0", features = ["defmt"] }
+# Dependencies used by more than one member, so versions stay in sync.
+[workspace.dependencies]
+application = { path = "application" }
 defmt = "1.0.1"
-defmt-rtt = "1.0.0"
-fixed = "1.29.0"
-fixed-macro = "1.2"
-reqwless = { version = "0.14.0", default-features = false, features = [
-    "defmt",
-    "embedded-tls",
-] }
+heapless = { version = "0.9.1", features = ["serde"] }
 serde = { version = "1.0.221", default-features = false, features = ["derive"] }
-serde-json-core = { version = "0.6.0", features = [
-    "custom-error-messages",
-    "defmt",
-] }
-assign-resources = "0.5.0"
-#cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
-cortex-m = { version = "0.7.7", features = ["inline-asm"] }
-cortex-m-rt = { version = "0.7.5", features = ["set-sp", "set-vtor"] }
-critical-section = "1.2"
-panic-probe = { version = "1.0.0", default-features = false, features = [
-    "rtt-target",
-] }
-display-interface-spi = "0.5.0"
-embedded-graphics = "0.8.1"
-mipidsi = "0.10.0"
-display-interface = "0.5.0"
-byte-slice-cast = { version = "1.2.3", default-features = false }
-smart-leds = "0.4.0"
-heapless = { version = "0.9.1", features = ["serde", "defmt"] }
-usbd-hid = "0.10.0"
-
-embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
-embedded-hal-async = "1.0"
-embedded-hal-bus = { version = "0.3", features = ["async", "defmt-03"] }
-embedded-io-async = { version = "0.7.0", features = ["defmt"] }
-embedded-storage = { version = "0.3" }
-static_cell = "2.1"
-portable-atomic = { version = "1.11", features = ["critical-section"] }
-log = "0.4"
-rand = { version = "0.10.1", default-features = false }
-
-bt-hci = { version = "0.8.1", default-features = false, features = ["defmt"] }
-epd-waveshare = { git = "https://github.com/ducktec/epd-waveshare", rev = "0c3944c" } # Commit from fork with display sleep bugfix applied
-fugit = "0.4.0"
-const_format = "0.2.34"
-profont = "0.7.0"
-u8g2-fonts = "0.7.2"
-function_name = "0.3.0"
-embedded-tls = { version = "0.18.0", default-features = false, features = [
-    "rustpki", # Required to parse and cross-check the server's certificate handshake
-] }
-der = { version = "0.8.0", default-features = false, features = [
-    "derive",
-    "oid",
-    "time",
-    "heapless",
-] }
-embedded-iconoir = { version = "0.2.3", features = ["18px", "48px"] }
-sntpc-net-embassy = "0.11.0"
-sntpc = "0.11.0"
-sntpc-time-embassy = "0.6.0"
+serde-json-core = { version = "0.6.0", features = ["custom-error-messages"] }
 
 [patch.crates-io]
 # Original patched components
@@ -125,19 +39,6 @@ embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", branch = "
 
 # Transitive dependency, original is unmaintained, use community fork (https://rustsec.org/advisories/RUSTSEC-2026-0173)
 proc-macro-error2 = { git = "https://github.com/Nuvai/proc-macro-error-2", rev = "24962c19bac89c580a9831ffc81dbfe00b17c37a" }
-
-[target.'cfg( target_arch = "arm" )'.dependencies]
-panic-probe = { version = "1", features = ["print-defmt"] }
-
-[target.'cfg( target_arch = "riscv32" )'.dependencies]
-panic-halt = { version = "1.0.0" }
-
-[target.riscv32imac-unknown-none-elf.dependencies]
-rp235x-hal = { version = "0.4", features = ["rt", "critical-section-impl"] }
-
-[target."thumbv8m.main-none-eabihf".dependencies]
-rp235x-hal = { version = "0.4", features = ["rt", "critical-section-impl"] }
-
 
 [profile.release]
 # Enable generation of debug symbols even on release builds
