@@ -25,7 +25,7 @@ use embassy_sync::signal::Signal;
 use embassy_time::Delay;
 use embassy_time::{Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use epd_waveshare::epd3in7::EPD3in7;
+use epd_waveshare::epd3in7::{Display3in7, EPD3in7};
 use epd_waveshare::prelude::WaveshareDisplay;
 use heapless::{String, Vec};
 use static_cell::StaticCell;
@@ -33,6 +33,8 @@ use static_cell::StaticCell;
 mod config;
 mod models;
 mod panic;
+#[macro_use]
+mod psram;
 mod schedule;
 mod tasks;
 
@@ -94,6 +96,10 @@ assign_resources! {
         pin_11: PIN_11,
         pin_10: PIN_10,
     }
+    psram_resources: PsramResources {
+        qmi_cs1: QMI_CS1,
+        pin_47: PIN_47,
+    }
     network_resources: NetworkResources {
         pio0: PIO0,
         dma_ch0: DMA_CH0,
@@ -140,6 +146,16 @@ async fn main(spawner: Spawner) {
     let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
 
+    // PSRAM holds the display frame buffer, so must be up before the display.
+    // `psram` is kept alive for the life of `main`, which never returns.
+    info!("{}: Initialising PSRAM...", function_name!());
+    let psram = psram::init(
+        split_p.psram_resources.qmi_cs1,
+        split_p.psram_resources.pin_47,
+    )
+    .expect("PSRAM: not detected or failed to initialise");
+    info!("{}: PSRAM ready, {} bytes", function_name!(), psram.size());
+
     // Spawn the task to update the display with predictions
     info!("{}: Initialising display...", function_name!());
 
@@ -181,7 +197,11 @@ async fn main(spawner: Spawner) {
     .expect("Display: eink initalise error"); // Force unwrap, as there is nothing that can be done if this errors out
 
     // Spawn display task
-    spawner.spawn(unwrap!(display_task(epd_driver, spi_device)));
+    spawner.spawn(unwrap!(display_task(
+        psram_static!(&psram, Display3in7, Display3in7::default()),
+        epd_driver,
+        spi_device
+    )));
 
     // Allow display task to run and show splash before continuing setup
     Timer::after_millis(500).await;
