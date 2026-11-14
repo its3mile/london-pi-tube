@@ -1,0 +1,5 @@
+# Cargo applies the nearest config, so this overrides the workspace's embedded
+# default target when run from this directory: plain `cargo test` here runs
+# the tests on the development machine.
+[build]
+target = "host-tuple"

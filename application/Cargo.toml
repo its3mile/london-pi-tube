@@ -1,0 +1,17 @@
+[package]
+name = "application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hardware-independent logic for london-pi-tube: TfL API models and parsing, London time, scheduling. Builds for the RP2350 and for the host, so it can be unit tested."
+
+[features]
+# Enabled by the firmware. Left off for host tests, because defmt needs the
+# embedded linker script to link.
+defmt = ["dep:defmt", "heapless/defmt", "serde-json-core/defmt"]
+
+[dependencies]
+defmt = { workspace = true, optional = true }
+heapless = { workspace = true }
+serde = { workspace = true }
+serde-json-core = { workspace = true }

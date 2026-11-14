@@ -4,6 +4,6 @@
   "editor.formatOnSave": true,
   "files.exclude": {
     ".pico-rs": true,
-    "cyw43-firmware": true
+    "firmware/cyw43-firmware": true
   }
 }

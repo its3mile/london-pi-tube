@@ -162,9 +162,9 @@ rustup target add thumbv8m.main-none-eabihf
 
 Provide the configuration
 
-`config.template.rs` defines the required compile time config, which may include secrets. This should be copied to `src/config.rs` and the required settings set.
+`firmware/config.template.rs` defines the required compile time config, which may include secrets. This should be copied to `firmware/src/config.rs` and the required settings set.
 
-N.B., `src/config.rs` is explicitly ignored from vcs by inclusion in the `.gitignore`.
+N.B., `firmware/src/config.rs` is explicitly ignored from vcs by inclusion in the `.gitignore`.
 
 ### Installation & Flashing via probe-rs
 

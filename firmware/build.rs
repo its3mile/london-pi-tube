@@ -19,8 +19,15 @@ fn main() {
     let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     println!("cargo:rustc-link-search={}", out.display());
 
-    println!("cargo:rerun-if-changed=.pico-rs");
-    let contents = read_to_string(".pico-rs")
+    // `.pico-rs` and `.cargo/` live at the workspace root, where the Raspberry
+    // Pi Pico VS Code extension expects them.
+    let workspace_root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let pico_rs = workspace_root.join(".pico-rs");
+    println!("cargo:rerun-if-changed={}", pico_rs.display());
+    let contents = read_to_string(&pico_rs)
         .map(|s| s.trim().to_string().to_lowercase())
         .unwrap_or_else(|e| {
             eprintln!("Failed to read file: {}", e);
@@ -42,9 +49,9 @@ fn main() {
     println!("cargo:rerun-if-changed=rp2350.x");
 
     let re = Regex::new(r"target = .*").unwrap();
-    let config_toml = include_str!(".cargo/config.toml");
+    let config_toml = include_str!("../.cargo/config.toml");
     let result = re.replace(config_toml, format!("target = \"{}\"", target));
-    let mut f = File::create(".cargo/config.toml").unwrap();
+    let mut f = File::create(workspace_root.join(".cargo/config.toml")).unwrap();
     f.write_all(result.as_bytes()).unwrap();
 
     // The file `rp2350_riscv.x` is what we specify in `.cargo/config.toml` for

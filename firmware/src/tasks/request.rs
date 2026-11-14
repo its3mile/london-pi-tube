@@ -25,11 +25,11 @@ use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
 use static_cell::StaticCell;
+use application::tfl::{parse_line_status, parse_predictions};
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
-use crate::models::prediction::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Prediction};
-use crate::models::status::{ARRAY_MAX_SIZE_LINE_STATUS_MODEL, Status};
+use crate::models::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Line, Prediction};
 use crate::{NOTIFY, SCHEDULE, UPDATE};
 
 // Static buffers for TLS client
@@ -142,10 +142,10 @@ pub async fn request_task(stack: Stack<'static>) {
             }
 
             // Line Status with fallback logic
-            if let Some(status) = fetched_status {
-                if let Some(line_status) = status.line_statuses.first() {
+            if let Some(line) = fetched_status {
+                if let Some(line_status) = line.line_status {
                     // Explicit warning/alert state from the API :(
-                    update.line_status = line_status.status_severity_description.clone();
+                    update.line_status = line_status.status_severity_description;
                 } else {
                     // No status data returned = everything is running perfectly fine!
                     update.line_status = String::try_from("Good Service").unwrap_or_default();
@@ -224,49 +224,34 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
         function_name!(),
         body.len()
     );
-    match serde_json_core::de::from_slice::<Vec<Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL>>(&body)
-    {
-        Ok((mut predictions, _used)) => {
+    // Filters by platform while parsing, so any number of arrivals across
+    // the station's other platforms/lines is tolerated. Sorted soonest first.
+    match parse_predictions::<ARRAY_MAX_SIZE_PREDICTION_MODEL>(
+        body,
+        tfl_api_request_config.platform_name,
+    ) {
+        Ok(predictions) if predictions.is_empty() => {
+            warn!(
+                "{}: No predictions for platform of interest",
+                function_name!()
+            );
+            None
+        }
+        Ok(predictions) => {
             info!(
                 "{}: Successfully deserialized {} predictions",
                 function_name!(),
                 predictions.len()
             );
-
-            if predictions.is_empty() {
-                error!(
-                    "{}: API returned a valid JSON array, but it was empty!",
-                    function_name!()
-                );
-                return None;
-            }
-
-            // Filter only for platform of interest
-            predictions.retain(|p| {
-                p.platform_name
-                    .contains(tfl_api_request_config.platform_name)
-            });
-
-            if predictions.is_empty() {
-                warn!(
-                    "{}: No predictions retained after filtering for platform on interest",
-                    function_name!()
-                );
-                return None;
-            }
-
-            // Sort array by which is arriving first
-            predictions.sort_unstable_by_key(|p| p.time_to_station);
-
             Some(predictions)
         }
         Err(e) => {
             error!(
-                "{}: Deserialisation failed with error: {:?}",
+                "{}: Deserialisation failed with error: {}",
                 function_name!(),
-                defmt::Debug2Format(&e)
+                e
             );
-            return None;
+            None
         }
     }
 }
@@ -275,7 +260,7 @@ async fn request_prediction<const RX_SZ: usize, const TX_SZ: usize>(
 pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
     http_client: &mut HttpClient<'_, TcpClient<'_, 1, RX_SZ, TX_SZ>, DnsSocket<'_>>,
     rx_buffer: &mut [u8],
-) -> Option<Status> {
+) -> Option<Line> {
     // 1. Dynamic URL Generation mirroring request_prediction
     let tfl_api_request_config = TflApiRequestConfig::new();
     let proxy_config = ProxyConfig::new();
@@ -337,41 +322,31 @@ pub async fn request_status<const RX_SZ: usize, const TX_SZ: usize>(
     );
 
     // 5. Process JSON objects in body
-    match serde_json_core::de::from_slice::<Vec<Status, ARRAY_MAX_SIZE_LINE_STATUS_MODEL>>(&body) {
-        Ok((mut statuses, _used)) => {
-            info!(
-                "{}: Successfully deserialized {} line statuses",
-                function_name!(),
-                statuses.len()
+    match parse_line_status(body) {
+        Ok(Some(line)) => {
+            debug!("{}: line = {}", function_name!(), line);
+            Some(line)
+        }
+        Ok(None) => {
+            error!(
+                "{}: API returned a valid JSON array, but it was empty!",
+                function_name!()
             );
-            debug!("{}: statuses = {}", function_name!(), statuses);
-            // Instead of pop() which could panic if empty, safely handle it
-            if statuses.is_empty() {
-                error!(
-                    "{}: API returned a valid JSON array, but it was empty!",
-                    function_name!()
-                );
-                return None;
-            }
-
-            // Safely take the last element out of the heapless::Vec
-            let status = statuses.pop();
-            status
+            None
         }
         Err(e) => {
             error!(
-                "{}: Deserialisation failed with error: {:?}",
+                "{}: Deserialisation failed with error: {}",
                 function_name!(),
-                defmt::Debug2Format(&e)
+                e
             );
-
             // Helpful fallback log to spot payload issues in terminal
             info!(
                 "{}: Raw response payload: {}",
                 function_name!(),
                 str::from_utf8(body).unwrap_or("[Malformed UTF-8 body]")
             );
-            return None;
+            None
         }
     }
 }

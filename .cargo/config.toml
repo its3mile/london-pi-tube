@@ -109,6 +109,11 @@ rustflags = [
 # runner = "picotool load -u -v -x -t elf"
 runner = "probe-rs run --chip ${CHIP} --protocol swd"
 
+[alias]
+# Run the hardware-independent unit tests on the development machine.
+# `host-tuple` overrides the embedded default target set in [build] above.
+test-host = "test -p application --target host-tuple"
+
 [env]
 DEFMT_LOG = "debug"
 DEFMT_RTT_BUFFER_SIZE = "1028"
