@@ -44,6 +44,7 @@ use config::{ScheduleConfig, WifiConfig};
 use crate::models::update::Update;
 use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
 use crate::schedule::Schedule;
+use crate::tasks::battery::battery_task;
 use crate::tasks::display::display_task;
 use crate::tasks::ntp::ntp_task;
 use crate::tasks::request::request_task;
@@ -69,7 +70,8 @@ const CHIP_SPECIFIC_CLOCK_DIVIDER: FixedU32<U8> = RM2_CLOCK_DIVIDER;
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;});
+    DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;
+    ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;});
 
 #[embassy_executor::task]
 async fn cyw43_task(
@@ -96,6 +98,11 @@ assign_resources! {
         pin_12: PIN_12,
         pin_11: PIN_11,
         pin_10: PIN_10,
+    }
+    battery_resources: BatteryResources {
+        adc: ADC,
+        // VSYS sense, through the board's 3:1 divider (ADC channel 3 on the RP2350B)
+        pin_43: PIN_43,
     }
     psram_resources: PsramResources {
         qmi_cs1: QMI_CS1,
@@ -203,6 +210,22 @@ async fn main(spawner: Spawner) {
         epd_driver,
         spi_device
     )));
+
+    // Spawn the battery monitor. Started before the network is up, so the
+    // charge level is known even when there is no Wi-Fi.
+    info!("{}: Starting battery task...", function_name!());
+    let adc = embassy_rp::adc::Adc::new(
+        split_p.battery_resources.adc,
+        Irqs,
+        embassy_rp::adc::Config::default(),
+    );
+    // The pull-down supplies the low side of the sense divider: without it the
+    // pin floats near 3.1 V whatever VSYS is (see application::battery).
+    let vsys = embassy_rp::adc::Channel::new_pin(
+        split_p.battery_resources.pin_43,
+        embassy_rp::gpio::Pull::Down,
+    );
+    spawner.spawn(unwrap!(battery_task(adc, vsys)));
 
     // Allow display task to run and show splash before continuing setup
     Timer::after_millis(500).await;

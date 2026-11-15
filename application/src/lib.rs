@@ -12,6 +12,7 @@
 //! ```
 #![cfg_attr(not(test), no_std)]
 
+pub mod battery;
 pub mod de;
 pub mod models;
 pub mod schedule;

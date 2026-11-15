@@ -18,6 +18,7 @@
 //!
 
 use ::function_name::named;
+use application::battery::PowerState;
 use core::fmt::Write as _;
 use defmt::{error, info};
 use embassy_rp::gpio::{Input, Output};
@@ -42,6 +43,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd3in7::*, prelude::*};
 
 use crate::models::update::Update;
+use crate::tasks::battery::BATTERY;
 use crate::tasks::ntp::WALL_CLOCK;
 use crate::{NOTIFY, SCHEDULE, UPDATE};
 
@@ -338,35 +340,47 @@ fn show_update(
         )
         .map_err(|_| DisplayError::RenderingFailed)?;
 
-    // Bottom left, last updated
+    // Bottom left: last update time, then battery state
     let current_time = WALL_CLOCK.lock(|cell| {
         // borrow() gives us the &WallClock safely
         cell.borrow().current_london()
     });
+    let battery = BATTERY.lock(|cell| cell.get());
 
-    match current_time {
+    let mut footer_text = String::<32>::new();
+    match &current_time {
         Some(t) => {
-            info!("{}: The current time is {}", function_name!(), &t);
-
-            let mut footer_text = String::<32>::new();
+            info!("{}: The current time is {}", function_name!(), t);
             let _ = write!(&mut footer_text, "{}", t.as_str());
-
-            styles
-                .footer_time_font
-                .render_aligned(
-                    footer_text.as_str(),
-                    display_bounds.top_left + Point::new(10, display_bounds.size.height as i32 - 8),
-                    VerticalPosition::Baseline,
-                    HorizontalAlignment::Left,
-                    FontColor::Transparent(styles.colors.fg),
-                    display,
-                )
-                .map_err(|_| DisplayError::RenderingFailed)?;
         }
         None => warn!(
             "{}: Unable to get current time - clock syncing pending...",
             function_name!()
         ),
+    }
+    if let Some(reading) = battery {
+        if !footer_text.is_empty() {
+            let _ = write!(&mut footer_text, "  ");
+        }
+        let _ = match reading.state {
+            PowerState::Battery { percent } => write!(&mut footer_text, "{}%", percent),
+            // On USB the charge level cannot be measured (see application::battery)
+            PowerState::External => write!(&mut footer_text, "USB"),
+        };
+    }
+
+    if !footer_text.is_empty() {
+        styles
+            .footer_time_font
+            .render_aligned(
+                footer_text.as_str(),
+                display_bounds.top_left + Point::new(10, display_bounds.size.height as i32 - 8),
+                VerticalPosition::Baseline,
+                HorizontalAlignment::Left,
+                FontColor::Transparent(styles.colors.fg),
+                display,
+            )
+            .map_err(|_| DisplayError::RenderingFailed)?;
     }
 
     info!("{}: Rendering update", function_name!());
