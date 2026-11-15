@@ -22,5 +22,6 @@ fetch() { # name path
 fetch arrivals_east_putney StopPoint/940GZZLUEPY/Arrivals
 fetch arrivals_earls_court  StopPoint/940GZZLUECT/Arrivals
 fetch arrivals_kings_cross  StopPoint/940GZZLUKSX/Arrivals
+fetch line_arrivals_district_east_putney Line/district/Arrivals/940GZZLUEPY
 fetch status_district       Line/district/Status
 fetch status_all            Line/Mode/tube,elizabeth-line,overground,dlr/Status

@@ -5,19 +5,18 @@
 use application::schedule::{ActiveWindow, hms_to_seconds};
 use embassy_time::Timer;
 
-use crate::{
-    config::ScheduleConfig,
-    tasks::ntp::{WALL_CLOCK, unix_to_london_time},
-};
+use application::config::ScheduleConfig;
+
+use crate::tasks::ntp::{WALL_CLOCK, unix_to_london_time};
 
 pub struct Schedule {
     window: ActiveWindow,
 }
 
 impl Schedule {
-    pub const fn from_config(config: ScheduleConfig) -> Self {
+    pub const fn new(config: ScheduleConfig) -> Self {
         Self {
-            window: ActiveWindow::new(*config.active_at, *config.inactive_at),
+            window: ActiveWindow::new(config.active_at.as_hms(), config.inactive_at.as_hms()),
         }
     }
 

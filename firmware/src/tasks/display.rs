@@ -18,6 +18,7 @@
 //!
 
 use ::function_name::named;
+use application::config::Config;
 use core::fmt::Write as _;
 use defmt::{debug, error, info};
 use embassy_rp::gpio::{Input, Output};
@@ -43,7 +44,8 @@ use epd_waveshare::{epd3in7::*, prelude::*};
 
 use crate::models::update::Update;
 use crate::tasks::ntp::WALL_CLOCK;
-use crate::{NOTIFY, SCHEDULE, UPDATE};
+use crate::schedule::Schedule;
+use crate::{NOTIFY, UPDATE};
 use application::header::write_header;
 
 /// The main display task that handles displaying sensor data and connection status
@@ -72,7 +74,10 @@ pub async fn display_task(
     display: &'static mut Display3in7,
     mut epd_driver: DisplayDriver,
     mut spi_device: DisplaySpiDevice,
+    config: &'static Config,
 ) {
+    let schedule = Schedule::new(config.schedule);
+
     // Landscape mode, USB plug to the right
     display.set_rotation(DisplayRotation::Rotate270);
 
@@ -95,7 +100,7 @@ pub async fn display_task(
     // Main update loop
     loop {
         // Handle scheduled sleep
-        if !SCHEDULE.is_active() {
+        if !schedule.is_active() {
             // Blank the display for the inactive period
             info!("{}: Inactive: clearing display", function_name!());
             let _ = display
@@ -107,7 +112,7 @@ pub async fn display_task(
                 .unwrap_or_else(|_| error!("{}: Failed to clear display", function_name!()));
             power.sleep(&mut epd_driver, &mut spi_device);
 
-            SCHEDULE.wait_until_active().await;
+            schedule.wait_until_active().await;
             continue;
         }
 

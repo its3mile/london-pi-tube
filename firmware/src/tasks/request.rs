@@ -28,12 +28,12 @@ use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
 use static_cell::ConstStaticCell;
 
-use crate::config::ProxyConfig;
-use crate::config::TflApiRequestConfig;
+use application::config::{Config, TflConfig};
 use crate::models::{
     ARRAY_MAX_SIZE_PREDICTION_MODEL, Line, Prediction, TFL_API_FIELD_LONG_STR_SIZE,
 };
-use crate::{NOTIFY, SCHEDULE, UPDATE};
+use crate::schedule::Schedule;
+use crate::{NOTIFY, UPDATE};
 
 /// TLS record read buffer. embedded-tls reads one record at a time, and an
 /// encrypted record is at most 16,640 bytes (2^14 + 256), so anything above
@@ -76,7 +76,9 @@ static TCP_STATE: ConstStaticCell<TcpClientState<1, TCP_TX_BUF_SIZE, TCP_RX_BUF_
 
 #[named]
 #[embassy_executor::task(pool_size = 1)]
-pub async fn request_task(stack: Stack<'static>) {
+pub async fn request_task(stack: Stack<'static>, config: &'static Config) {
+    let tfl = &config.tfl;
+    let schedule = Schedule::new(config.schedule);
     let mut rng: RoscRng = RoscRng;
     let mut sleep_this_cycle: bool = false;
 
@@ -90,7 +92,7 @@ pub async fn request_task(stack: Stack<'static>) {
     {
         let mut update = UPDATE.lock().await;
         update.platform_name =
-            String::try_from(TflApiRequestConfig::new().platform_name).unwrap_or_default();
+            String::try_from(tfl.platform_name.as_str()).unwrap_or_default();
     }
 
     // Whether the station name has been fetched; retried each cycle until it is.
@@ -98,14 +100,12 @@ pub async fn request_task(stack: Stack<'static>) {
 
     loop {
         // Handle scheduled sleep
-        SCHEDULE.wait_until_active().await;
+        schedule.wait_until_active().await;
 
         // Sleep for a while before the starting requests
         // N.B this is performed at the top of the loop, to ensure any allocated resources are dropped before sleeping
         if sleep_this_cycle {
-            let query_delay_secs: u64 = option_env!("QUERY_DELAY")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(30);
+            let query_delay_secs = u64::from(config.query_interval_secs);
             info!(
                 "{}: Waiting for {} seconds before making the request...",
                 function_name!(),
@@ -135,7 +135,7 @@ pub async fn request_task(stack: Stack<'static>) {
             info!("{}: Making StopPoint API request", function_name!());
             match with_timeout(
                 Duration::from_secs(10),
-                request_station_name(&mut http_client, rx_buffer),
+                request_station_name(&mut http_client, rx_buffer, tfl),
             )
             .await
             {
@@ -153,7 +153,7 @@ pub async fn request_task(stack: Stack<'static>) {
         info!("{}: Making Prediction API request", function_name!());
         let fetched_predictions = match with_timeout(
             Duration::from_secs(10),
-            request_prediction(&mut http_client, rx_buffer),
+            request_prediction(&mut http_client, rx_buffer, tfl),
         )
         .await
         {
@@ -175,7 +175,7 @@ pub async fn request_task(stack: Stack<'static>) {
         info!("{}: Making Status API request", function_name!());
         let fetched_status = match with_timeout(
             Duration::from_secs(10),
-            request_status(&mut http_client, rx_buffer),
+            request_status(&mut http_client, rx_buffer, tfl),
         )
         .await
         {
@@ -237,22 +237,31 @@ pub async fn request_task(stack: Stack<'static>) {
     }
 }
 
+/// `url` without the API key, for logging: everything after `app_key=` is dropped.
+fn redact_api_key(url: &str) -> &str {
+    url.split_once("app_key=").map_or(url, |(before, _)| before)
+}
+
 #[named]
 async fn request_prediction<const TX_SZ: usize, const RX_SZ: usize>(
     http_client: &mut HttpClient<'_, TcpClient<'_, 1, TX_SZ, RX_SZ>, DnsSocket<'_>>,
     rx_buffer: &mut [u8],
+    tfl: &TflConfig,
 ) -> Option<Vec<Prediction, ARRAY_MAX_SIZE_PREDICTION_MODEL>> {
-    // define the URL for the TFL API request
-    let tfl_api_request_config = TflApiRequestConfig::new();
-    let proxy_config = ProxyConfig::new();
+    // Arrivals for the configured line only, rather than every line at the
+    // station; the platform filter below then picks the trains to show.
     let mut url_buffer: String<256> = String::new();
-    let url = match write!(
-        &mut url_buffer,
-        "{}/StopPoint/{}/Arrivals?app_key={}",
-        proxy_config.http_proxy,
-        tfl_api_request_config.stopcode,
-        tfl_api_request_config.api_primary_key
-    ) {
+    let url = match (|| {
+        write!(
+            &mut url_buffer,
+            "{}/Line/{}/Arrivals/{}?",
+            tfl.base_url, tfl.line_id, tfl.stopcode
+        )?;
+        if let Some(direction) = tfl.direction {
+            write!(&mut url_buffer, "direction={}&", direction.as_query())?;
+        }
+        write!(&mut url_buffer, "app_key={}", tfl.api_key.expose())
+    })() {
         Ok(_) => url_buffer.as_str(),
         Err(e) => {
             error!(
@@ -265,7 +274,7 @@ async fn request_prediction<const TX_SZ: usize, const RX_SZ: usize>(
     };
 
     // Make the HTTP request to the TFL API
-    info!("{}: connecting to {}", function_name!(), &url);
+    info!("{}: connecting to {}", function_name!(), redact_api_key(url));
 
     // Make HTTP request
     let mut request = match http_client.request(Method::GET, &url).await {
@@ -305,7 +314,7 @@ async fn request_prediction<const TX_SZ: usize, const RX_SZ: usize>(
     // the station's other platforms/lines is tolerated. Sorted soonest first.
     match parse_predictions::<ARRAY_MAX_SIZE_PREDICTION_MODEL>(
         body,
-        tfl_api_request_config.platform_name,
+        &tfl.platform_name,
     ) {
         Ok(predictions) if predictions.is_empty() => {
             warn!(
@@ -348,16 +357,15 @@ const STATION_NAME_SCAN_LIMIT: usize = 32 * 1024;
 async fn request_station_name<const TX_SZ: usize, const RX_SZ: usize>(
     http_client: &mut HttpClient<'_, TcpClient<'_, 1, TX_SZ, RX_SZ>, DnsSocket<'_>>,
     rx_buffer: &mut [u8],
+    tfl: &TflConfig,
 ) -> Option<String<TFL_API_FIELD_LONG_STR_SIZE>> {
-    let tfl_api_request_config = TflApiRequestConfig::new();
-    let proxy_config = ProxyConfig::new();
     let mut url_buffer: String<256> = String::new();
     if let Err(e) = write!(
         &mut url_buffer,
         "{}/StopPoint/{}?app_key={}",
-        proxy_config.http_proxy,
-        tfl_api_request_config.stopcode,
-        tfl_api_request_config.api_primary_key
+        tfl.base_url,
+        tfl.stopcode,
+        tfl.api_key.expose()
     ) {
         error!(
             "{}: URL generation failed: Stack buffer size of 256 bytes was too small!: {}",
@@ -370,7 +378,7 @@ async fn request_station_name<const TX_SZ: usize, const RX_SZ: usize>(
     info!(
         "{}: connecting to {}",
         function_name!(),
-        url_buffer.as_str()
+        redact_api_key(url_buffer.as_str())
     );
 
     let mut request = match http_client.request(Method::GET, url_buffer.as_str()).await {
@@ -422,20 +430,18 @@ async fn request_station_name<const TX_SZ: usize, const RX_SZ: usize>(
 pub async fn request_status<const TX_SZ: usize, const RX_SZ: usize>(
     http_client: &mut HttpClient<'_, TcpClient<'_, 1, TX_SZ, RX_SZ>, DnsSocket<'_>>,
     rx_buffer: &mut [u8],
+    tfl: &TflConfig,
 ) -> Option<Line> {
     // 1. Dynamic URL Generation mirroring request_prediction
-    let tfl_api_request_config = TflApiRequestConfig::new();
-    let proxy_config = ProxyConfig::new();
     let mut url_buffer: String<256> = String::new();
 
     // Hardcoded line ID parameters are replaced by runtime configs
-    // Assuming tfl_api_request_config contains or can provide your target line ID
     let url = match write!(
         &mut url_buffer,
         "{}/Line/{}/Status?app_key={}",
-        proxy_config.http_proxy,
-        tfl_api_request_config.line_id,
-        tfl_api_request_config.api_primary_key
+        tfl.base_url,
+        tfl.line_id,
+        tfl.api_key.expose()
     ) {
         Ok(_) => url_buffer.as_str(),
         Err(e) => {
@@ -449,7 +455,7 @@ pub async fn request_status<const TX_SZ: usize, const RX_SZ: usize>(
     };
 
     // 2. Make the HTTP request to the TFL API
-    info!("{}: connecting to {}", function_name!(), &url);
+    info!("{}: connecting to {}", function_name!(), redact_api_key(url));
 
     let mut request = match http_client.request(Method::GET, &url).await {
         Ok(req) => req,
