@@ -257,15 +257,40 @@ fn show_update(
             )
             .map_err(|_| DisplayError::RenderingFailed)?;
 
-        // Destination name
+        // Destination
         // Offset expanded to 128px to safely clear the countdowns
         let destination_pos = pos + Point::new(128, 0);
-        let destination_name = first_two_words(&arrival.destination_name);
+        let right_edge = display.bounding_box().size.width as i32 - 10;
+        let (destination, destination_font) = match arrival.destination() {
+            Some(destination) => {
+                // TfL's labels vary in length ("Hainault via Newbury Park"):
+                // drop to the smaller font rather than run off the screen.
+                let fits = styles
+                    .bold_text_font
+                    .get_rendered_dimensions(
+                        destination,
+                        destination_pos,
+                        VerticalPosition::Baseline,
+                    )
+                    .ok()
+                    .and_then(|dims| dims.bounding_box)
+                    .is_none_or(|bbox| bbox.top_left.x + bbox.size.width as i32 <= right_edge);
+                let font = if fits {
+                    &styles.bold_text_font
+                } else {
+                    &styles.regular_text_font
+                };
+                (destination, font)
+            }
+            // TfL does not know the destination yet (it gives no name, and
+            // "Check Front of Train" as `towards`): say so in TfL's words, in
+            // the smaller font so it reads as a notice rather than a place.
+            None => ("Check front of train", &styles.regular_text_font),
+        };
 
-        styles
-            .bold_text_font
+        destination_font
             .render_aligned(
-                destination_name,
+                destination,
                 destination_pos,
                 VerticalPosition::Baseline,
                 HorizontalAlignment::Left,
@@ -437,17 +462,4 @@ impl DisplayStyles {
 pub enum DisplayError {
     /// An error occurred while rendering data
     RenderingFailed,
-}
-
-pub fn first_two_words(s: &str) -> &str {
-    let mut space_count = 0;
-    for (i, c) in s.char_indices() {
-        if c == ' ' {
-            space_count += 1;
-            if space_count == 2 {
-                return &s[..i];
-            }
-        }
-    }
-    s
 }

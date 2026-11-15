@@ -36,12 +36,13 @@ pub struct Prediction {
     pub vehicle_id: String<TFL_API_FIELD_STR_SIZE>,
     #[serde(default, deserialize_with = "truncating_string")]
     pub station_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
-    /// Frequently absent from real responses.
-    #[serde(
-        default = "default_destination_name",
-        deserialize_with = "truncating_string"
-    )]
+    /// Frequently absent from real responses: see [`Prediction::destination`].
+    #[serde(default, deserialize_with = "truncating_string")]
     pub destination_name: String<TFL_API_FIELD_LONG_STR_SIZE>,
+    /// TfL's short destination label for displays, e.g. "Wimbledon" or
+    /// "Heathrow T123 + 5"; "Check Front of Train" when it is not known.
+    #[serde(default, deserialize_with = "truncating_string")]
+    pub towards: String<TFL_API_FIELD_STR_SIZE>,
     #[serde(default, deserialize_with = "truncating_string")]
     pub line_name: String<TFL_API_FIELD_STR_SIZE>,
     #[serde(default, deserialize_with = "truncating_string")]
@@ -54,8 +55,40 @@ pub struct Prediction {
     pub current_location: String<TFL_API_FIELD_LONG_STR_SIZE>,
 }
 
-fn default_destination_name() -> String<TFL_API_FIELD_LONG_STR_SIZE> {
-    crate::de::truncate("N/A")
+/// What TfL puts in `towards` when it does not know where a train is going.
+const UNKNOWN_TOWARDS: &str = "Check Front of Train";
+
+/// Suffixes dropped from full station names to fit the display.
+const STATION_SUFFIXES: [&str; 4] = [
+    " Underground Station",
+    " DLR Station",
+    " Rail Station",
+    " Station",
+];
+
+impl Prediction {
+    /// The train's destination, as short as TfL provides it, or `None` when
+    /// TfL does not know it.
+    ///
+    /// Some trains (e.g. eastbound District trains leaving the Wimbledon
+    /// branch) have no destination set until further along the line: TfL then
+    /// omits `destinationName` and sets `towards` to "Check Front of Train".
+    /// No other endpoint knows it either, so the caller should say so.
+    pub fn destination(&self) -> Option<&str> {
+        let towards = self.towards.trim();
+        if !towards.is_empty() && !towards.eq_ignore_ascii_case(UNKNOWN_TOWARDS) {
+            return Some(towards);
+        }
+        let name = self.destination_name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        let short = STATION_SUFFIXES
+            .iter()
+            .find_map(|suffix| name.strip_suffix(suffix))
+            .unwrap_or(name);
+        Some(short)
+    }
 }
 
 /// One element of `Line.lineStatuses`.
