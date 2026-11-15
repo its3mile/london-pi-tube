@@ -74,13 +74,52 @@ fn earls_court_more_arrivals_than_capacity() {
     assert!(ps.iter().all(|p| p.line_name == "Piccadilly"));
 }
 
-/// Real responses omit `destinationName` for some trains.
+/// Real responses omit `destinationName` for some trains, with `towards` set
+/// to "Check Front of Train": the destination is not known.
 #[test]
-fn earls_court_missing_destination_defaults() {
+fn earls_court_missing_destination_is_unknown() {
     let body = fixture("arrivals_earls_court.json");
     let ps = parse_predictions::<N>(&body, "Platform 1").unwrap();
     assert_eq!(times(&ps), [739, 1099]);
-    assert!(ps.iter().all(|p| p.destination_name == "N/A"));
+    assert!(ps.iter().all(|p| p.destination_name.is_empty()));
+    assert!(ps.iter().all(|p| p.towards == "Check Front of Train"));
+    assert!(ps.iter().all(|p| p.destination().is_none()));
+}
+
+/// `towards` is TfL's short label, so it is preferred over the full name.
+#[test]
+fn destination_prefers_towards() {
+    let body = fixture("arrivals_earls_court.json");
+    let ps = parse_predictions::<64>(&body, "").unwrap();
+    let labels: Vec<_> = ps.iter().map(|p| p.destination()).collect();
+    assert!(labels.contains(&Some("Richmond")));
+    assert!(labels.contains(&Some("Cockfosters")));
+    assert!(labels.contains(&Some("Heathrow T123 + 5")));
+    assert!(labels.contains(&Some("Heathrow via T4 Loop")));
+    assert!(labels.contains(&None));
+
+    let ps = parse_predictions::<N>(&fixture("arrivals_east_putney.json"), "").unwrap();
+    assert_eq!(ps[0].destination(), Some("Wimbledon"));
+}
+
+/// Seen in live data: a destination is known, but `towards` was not updated.
+#[test]
+fn destination_falls_back_to_shortened_name() {
+    let item = prediction_json(
+        "Eastbound - Platform 1",
+        60,
+        r#","destinationName":"Tower Hill Underground Station","towards":"Check Front of Train""#,
+    );
+    let ps = parse_predictions::<N>(&array(&[item]), "Platform 1").unwrap();
+    assert_eq!(ps[0].destination(), Some("Tower Hill"));
+
+    let item = prediction_json(
+        "Eastbound - Platform 1",
+        60,
+        r#","destinationName":"Edgware Road (Circle Line) Underground Station""#,
+    );
+    let ps = parse_predictions::<N>(&array(&[item]), "Platform 1").unwrap();
+    assert_eq!(ps[0].destination(), Some("Edgware Road (Circle Line)"));
 }
 
 #[test]
