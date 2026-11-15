@@ -28,6 +28,10 @@ panic-restart-test = []
 # flip-link and the HardFault handler (see src/fault.rs).
 #   cargo run --release --features stack-overflow-test
 stack-overflow-test = []
+# Test builds only: block the executor a few seconds after boot, to exercise
+# the hardware watchdog (see src/tasks/watchdog.rs).
+#   cargo run --release --features watchdog-hang-test
+watchdog-hang-test = []
 
 [build-dependencies]
 regex = "1.12.2"
@@ -109,7 +113,11 @@ log = "0.4"
 rand = { version = "0.10.1", default-features = false }
 
 bt-hci = { version = "0.8.1", default-features = false, features = ["defmt"] }
-epd-waveshare = { git = "https://github.com/ducktec/epd-waveshare", rev = "0c3944c" } # Commit from fork with display sleep bugfix applied
+# Fork of the official rust-embedded-community/epd-waveshare main, with two
+# fixes for the 3.7in panel (issue #19):
+# - deep-sleep command per the SSD1677 datasheet (upstream PR #234, unmerged)
+# - 3 ms reset pulse, so the panel reliably wakes from deep sleep
+epd-waveshare = { git = "https://github.com/its3mile/epd-waveshare", rev = "821c4befae46f077aa9be92f8685965a3def55d5" }
 fugit = "0.4.0"
 const_format = "0.2.34"
 profont = "0.7.0"
