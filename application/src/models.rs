@@ -73,6 +73,9 @@ pub struct LineStatus {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[serde(rename_all = "camelCase")]
 pub struct Line {
+    /// Display name, e.g. "District" or "Elizabeth line".
+    #[serde(default, deserialize_with = "truncating_string")]
+    pub name: String<TFL_API_FIELD_STR_SIZE>,
     /// The first entry of `lineStatuses`, if any. Further entries are skipped.
     #[serde(rename = "lineStatuses", default, deserialize_with = "first_element")]
     pub line_status: Option<LineStatus>,

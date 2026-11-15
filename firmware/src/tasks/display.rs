@@ -44,6 +44,7 @@ use epd_waveshare::{epd3in7::*, prelude::*};
 use crate::models::update::Update;
 use crate::tasks::ntp::WALL_CLOCK;
 use crate::{NOTIFY, SCHEDULE, UPDATE};
+use application::header::write_header;
 
 /// The main display task that handles displaying sensor data and connection status
 pub type DisplayDriver = EPD3in7<
@@ -181,12 +182,14 @@ fn show_update(
 
     info!("{}: Drawing update header", function_name!());
 
-    // Format header tightly on one or two lines
-    let mut header_content = String::<128>::new();
-    let _ = write!(
+    // Format header tightly on one or two lines, leaving out any part that is
+    // not known yet (e.g. no predictions, so no full platform name)
+    let mut header_content = String::<160>::new();
+    let _ = write_header(
         &mut header_content,
-        "{} Line - {}\n{}",
-        update.line_name, update.station_name, update.platform_name
+        &update.line_name,
+        &update.station_name,
+        &update.platform_name,
     );
 
     // Adjusted Y position to 24 to fix the top-clipping issue
@@ -206,6 +209,21 @@ fn show_update(
 
     // Pushed down to Y = 100 to comfortably clear the header block
     let mut pos = display.bounding_box().top_left + Point::new(10, 100);
+
+    // Nothing due: say so, rather than leaving the body blank
+    if update.arrivals.is_empty() {
+        styles
+            .bold_text_font
+            .render_aligned(
+                "No trains currently due",
+                pos,
+                VerticalPosition::Baseline,
+                HorizontalAlignment::Left,
+                FontColor::Transparent(styles.colors.fg),
+                display,
+            )
+            .map_err(|_| DisplayError::RenderingFailed)?;
+    }
 
     for (idx, arrival) in update.arrivals.iter().enumerate() {
         // Guard against screen overflow (leave space for footer)

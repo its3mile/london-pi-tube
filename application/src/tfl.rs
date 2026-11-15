@@ -14,7 +14,8 @@ use heapless::Vec;
 use serde::de::{DeserializeSeed, SeqAccess, Visitor};
 
 use crate::de::FirstElement;
-use crate::models::{Line, Prediction};
+use crate::json_scan::TopLevelStringScanner;
+use crate::models::{Line, Prediction, TFL_API_FIELD_LONG_STR_SIZE};
 
 pub use serde_json_core::de::Error;
 
@@ -51,6 +52,21 @@ pub fn parse_line_status(body: &[u8]) -> Result<Option<Line>, Error> {
     let line = FirstElement::<Line>::new().deserialize(&mut de)?;
     de.end()?;
     Ok(line)
+}
+
+/// Reads the station name from a `/StopPoint/{id}` body as it streams in.
+///
+/// That response describes the station in full (child stops, facilities, and
+/// for an interchange such as King's Cross, every mode): hundreds of KB, far
+/// more than fits in memory. The name comes near the start, so feed the body
+/// in chunks and stop reading once [`TopLevelStringScanner::feed`] returns it.
+///
+/// For a station that TfL groups into an interchange, this is the
+/// interchange's name, e.g. "King's Cross & St Pancras International".
+pub type StationNameScanner = TopLevelStringScanner<TFL_API_FIELD_LONG_STR_SIZE>;
+
+pub fn station_name_scanner() -> StationNameScanner {
+    TopLevelStringScanner::new("commonName")
 }
 
 struct PlatformFilter<'a, const N: usize> {

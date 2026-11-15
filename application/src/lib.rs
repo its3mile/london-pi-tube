@@ -13,6 +13,8 @@
 #![cfg_attr(not(test), no_std)]
 
 pub mod de;
+pub mod header;
+pub mod json_scan;
 pub mod models;
 pub mod schedule;
 pub mod tfl;

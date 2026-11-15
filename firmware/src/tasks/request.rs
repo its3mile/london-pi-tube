@@ -12,7 +12,7 @@
 //! Buffer sizes are carefully selected to support the Pimoroni Pico Plus 2W.
 //!  
 use ::function_name::named;
-use application::tfl::{parse_line_status, parse_predictions};
+use application::tfl::{parse_line_status, parse_predictions, station_name_scanner};
 use core::fmt::Write;
 use defmt::{debug, error, info, warn};
 use embassy_net::Stack;
@@ -21,6 +21,7 @@ use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_rp::clocks::RoscRng;
 use embassy_time::Timer;
 use embassy_time::{Duration, with_timeout};
+use embedded_io_async::Read as _;
 use heapless::String;
 use heapless::Vec;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
@@ -29,7 +30,9 @@ use static_cell::ConstStaticCell;
 
 use crate::config::ProxyConfig;
 use crate::config::TflApiRequestConfig;
-use crate::models::{ARRAY_MAX_SIZE_PREDICTION_MODEL, Line, Prediction};
+use crate::models::{
+    ARRAY_MAX_SIZE_PREDICTION_MODEL, Line, Prediction, TFL_API_FIELD_LONG_STR_SIZE,
+};
 use crate::{NOTIFY, SCHEDULE, UPDATE};
 
 /// TLS record read buffer. embedded-tls reads one record at a time, and an
@@ -82,6 +85,17 @@ pub async fn request_task(stack: Stack<'static>) {
     let tls_write_buffer = TLS_WRITE_BUF.take();
     let client_state = TCP_STATE.take();
 
+    // Show the configured platform until a prediction supplies its full name
+    // (e.g. "Eastbound - Platform 1"), so the header is never blank.
+    {
+        let mut update = UPDATE.lock().await;
+        update.platform_name =
+            String::try_from(TflApiRequestConfig::new().platform_name).unwrap_or_default();
+    }
+
+    // Whether the station name has been fetched; retried each cycle until it is.
+    let mut station_name_known = false;
+
     loop {
         // Handle scheduled sleep
         SCHEDULE.wait_until_active().await;
@@ -115,6 +129,25 @@ pub async fn request_task(stack: Stack<'static>) {
         let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
 
         // Make the API requests
+
+        // Station name, once: it does not depend on there being any trains.
+        if !station_name_known {
+            info!("{}: Making StopPoint API request", function_name!());
+            match with_timeout(
+                Duration::from_secs(10),
+                request_station_name(&mut http_client, rx_buffer),
+            )
+            .await
+            {
+                Ok(Some(name)) => {
+                    info!("{}: station name = {}", function_name!(), name.as_str());
+                    UPDATE.lock().await.station_name = name;
+                    station_name_known = true;
+                }
+                Ok(None) => error!("StopPoint API did not return a station name"),
+                Err(_) => error!("StopPoint network request timed out!"),
+            }
+        }
 
         // Request station & platform arrival predictions
         info!("{}: Making Prediction API request", function_name!());
@@ -164,18 +197,28 @@ pub async fn request_task(stack: Stack<'static>) {
         {
             let mut update = UPDATE.lock().await;
 
-            // Update predictions data if available
+            // Update predictions data if available. A successful fetch with no
+            // trains clears the arrivals, rather than leaving old ones on screen;
+            // a failed fetch leaves the last known arrivals in place.
             if let Some(predictions) = fetched_predictions {
-                if !predictions.is_empty() {
-                    update.line_name = predictions[0].line_name.clone();
-                    update.platform_name = predictions[0].platform_name.clone();
-                    update.station_name = predictions[0].station_name.clone();
-                    update.arrivals = predictions;
+                if let Some(first) = predictions.first() {
+                    update.platform_name = first.platform_name.clone();
+                    // Fallbacks, normally already set from StopPoint and line status
+                    if update.station_name.is_empty() {
+                        update.station_name = first.station_name.clone();
+                    }
+                    if update.line_name.is_empty() {
+                        update.line_name = first.line_name.clone();
+                    }
                 }
+                update.arrivals = predictions;
             }
 
             // Line Status with fallback logic
             if let Some(line) = fetched_status {
+                if !line.name.is_empty() {
+                    update.line_name = line.name.clone();
+                }
                 if let Some(line_status) = line.line_status {
                     // Explicit warning/alert state from the API :(
                     update.line_status = line_status.status_severity_description;
@@ -269,7 +312,8 @@ async fn request_prediction<const TX_SZ: usize, const RX_SZ: usize>(
                 "{}: No predictions for platform of interest",
                 function_name!()
             );
-            None
+            // Still a successful fetch: there are no trains to show.
+            Some(predictions)
         }
         Ok(predictions) => {
             info!(
@@ -288,6 +332,90 @@ async fn request_prediction<const TX_SZ: usize, const RX_SZ: usize>(
             None
         }
     }
+}
+
+/// Upper bound on how much of a StopPoint body is read while looking for the
+/// station name. It normally appears within the first 12 KB, even for the
+/// largest interchange; the full body can be hundreds of KB.
+const STATION_NAME_SCAN_LIMIT: usize = 32 * 1024;
+
+/// Fetch the configured station's name from `/StopPoint/{id}`.
+///
+/// The body is streamed through a small buffer and the connection dropped once
+/// the name has been read, so the response (up to hundreds of KB) never needs
+/// to fit in memory.
+#[named]
+async fn request_station_name<const TX_SZ: usize, const RX_SZ: usize>(
+    http_client: &mut HttpClient<'_, TcpClient<'_, 1, TX_SZ, RX_SZ>, DnsSocket<'_>>,
+    rx_buffer: &mut [u8],
+) -> Option<String<TFL_API_FIELD_LONG_STR_SIZE>> {
+    let tfl_api_request_config = TflApiRequestConfig::new();
+    let proxy_config = ProxyConfig::new();
+    let mut url_buffer: String<256> = String::new();
+    if let Err(e) = write!(
+        &mut url_buffer,
+        "{}/StopPoint/{}?app_key={}",
+        proxy_config.http_proxy,
+        tfl_api_request_config.stopcode,
+        tfl_api_request_config.api_primary_key
+    ) {
+        error!(
+            "{}: URL generation failed: Stack buffer size of 256 bytes was too small!: {}",
+            function_name!(),
+            e
+        );
+        return None;
+    }
+
+    info!(
+        "{}: connecting to {}",
+        function_name!(),
+        url_buffer.as_str()
+    );
+
+    let mut request = match http_client.request(Method::GET, url_buffer.as_str()).await {
+        Ok(req) => req,
+        Err(e) => {
+            error!("{}: Failed to make HTTP request: {}", function_name!(), e);
+            return None;
+        }
+    };
+
+    // `rx_buffer` receives the headers; the body is then read in chunks below.
+    let response = match request.send(rx_buffer).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("{}: Failed to send HTTP request: {}", function_name!(), e);
+            return None;
+        }
+    };
+
+    let mut reader = response.body().reader();
+    let mut scanner = station_name_scanner();
+    let mut chunk = [0u8; 512];
+    let mut total = 0;
+    while total < STATION_NAME_SCAN_LIMIT {
+        let read = match reader.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(e) => {
+                error!("{}: Failed to read response body: {}", function_name!(), e);
+                return None;
+            }
+        };
+        total += read;
+        if let Some(name) = scanner.feed(&chunk[..read]) {
+            debug!("{}: found after {} bytes", function_name!(), total);
+            return String::try_from(name).ok();
+        }
+    }
+
+    error!(
+        "{}: no station name in the first {} bytes of the response",
+        function_name!(),
+        total
+    );
+    None
 }
 
 #[named]
