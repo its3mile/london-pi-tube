@@ -1,85 +1,40 @@
-// IMPORTANT: Copy this file to config.rs (in the same directory as this file) and update with your real credentials
+// IMPORTANT: Copy this file to config.rs (in the src directory) and update with your real credentials
 // DO NOT commit config.rs to Git - it should be (already) in .gitignore
-use defmt::Format;
+//
+// These are the compiled-in defaults the device boots with. They are checked
+// while the firmware compiles: an invalid value (e.g. a stop code in lowercase,
+// or a time of 25:00) fails the build with a message naming the field. The
+// rules are in application/src/config.rs.
+// `Direction` is only needed once `direction` is set.
+#[allow(unused_imports)]
+use application::config::{
+    ConfigDefaults, Direction, ScheduleConfig, TflDefaults, TimeOfDay, WifiDefaults,
+};
 
-// WiFi credentials
-pub const WIFI_SSID: &str = "your-ssid";
-pub const WIFI_PASSWORD: &str = r"your-wifi-password";
-
-// WiFi connection configuration
-#[derive(Clone, Copy, Format)]
-pub struct WifiConfig {
-    pub ssid: &'static str,
-    pub password: &'static str,
-}
-
-impl WifiConfig {
-    pub fn new() -> Self {
-        Self {
-            ssid: WIFI_SSID,
-            password: WIFI_PASSWORD,
-        }
-    }
-}
-
-// Proxy info
-pub const HTTP_PROXY: &str = "https://api.tfl.gov.uk";
-
-// Proxy configuration
-#[derive(Clone, Copy, Format)]
-pub struct ProxyConfig {
-    pub http_proxy: &'static str,
-}
-
-impl ProxyConfig {
-    pub fn new() -> Self {
-        Self {
-            http_proxy: HTTP_PROXY,
-        }
-    }
-}
-
-// TFL API request information
-pub const API_PRIMARY_KEY: &str = "your-tfl-api-key";
-pub const LINE_ID: &str = "district";
-pub const PLATFORM_NAME: &str = "Platform 1";
-pub const STOPCODE: &str = "940GZZLUEPY";
-
-// TFL API request configuration
-#[derive(Clone, Copy, Format)]
-pub struct TflApiRequestConfig {
-    pub api_primary_key: &'static str,
-    pub line_id: &'static str,
-    pub platform_name: &'static str,
-    pub stopcode: &'static str,
-}
-
-impl TflApiRequestConfig {
-    pub fn new() -> Self {
-        Self {
-            api_primary_key: API_PRIMARY_KEY,
-            line_id: LINE_ID,
-            platform_name: PLATFORM_NAME,
-            stopcode: STOPCODE,
-        }
-    }
-}
-
-// Active/inactive schedule config
-pub const ACTIVE_AT: (u32, u32, u32) = (6, 30, 0);
-pub const INACTIVE_AT: (u32, u32, u32) = (22, 30, 0);
-
-#[derive(Clone, Copy, Format)]
-pub struct ScheduleConfig {
-    pub active_at: &'static (u32, u32, u32),
-    pub inactive_at: &'static (u32, u32, u32),
-}
-
-impl ScheduleConfig {
-    pub const fn new() -> Self {
-        Self {
-            active_at: &ACTIVE_AT,
-            inactive_at: &INACTIVE_AT,
-        }
-    }
-}
+pub const DEFAULTS: ConfigDefaults = ConfigDefaults {
+    wifi: WifiDefaults {
+        ssid: "your-ssid",
+        // Raw string, so backslashes and quotes need no escaping.
+        password: r"your-wifi-password",
+    },
+    tfl: TflDefaults {
+        base_url: "https://api.tfl.gov.uk",
+        api_key: "your-tfl-api-key",
+        line_id: "district",
+        stopcode: "940GZZLUEPY",
+        // Exactly as TfL reports it in `platformName`.
+        platform_name: "Platform 1",
+        // Optional server-side filter: Some(Direction::Inbound), Some(Direction::Outbound)
+        // or Some(Direction::All). TfL sometimes leaves a train's direction blank
+        // (often on the District and Elizabeth lines) and the filter then drops
+        // it, so leave this as None on those lines.
+        direction: None,
+    },
+    // The device sleeps outside this daily window (London time).
+    schedule: ScheduleConfig {
+        active_at: TimeOfDay::hms(6, 30, 0),
+        inactive_at: TimeOfDay::hms(22, 30, 0),
+    },
+    // Seconds between request cycles.
+    query_interval_secs: 30,
+};

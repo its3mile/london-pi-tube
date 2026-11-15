@@ -59,6 +59,18 @@ fn east_putney_other_platform_is_empty_not_error() {
     assert!(ps.is_empty());
 }
 
+/// `/Line/district/Arrivals/{stop}`, the endpoint the firmware requests: the
+/// same prediction objects, limited to one line. The last train has no
+/// `direction` field, which TfL's `direction=inbound` filter would drop; the
+/// platform filter keeps it.
+#[test]
+fn line_arrivals_keep_trains_with_no_direction() {
+    let body = fixture("line_arrivals_district_earls_court.json");
+    let ps = parse_predictions::<N>(&body, "Platform 4").unwrap();
+    assert_eq!(times(&ps), [435, 915, 1515]);
+    assert!(ps.iter().all(|p| p.line_name.as_str() == "District"));
+}
+
 /// Regression: the response has 12 elements. Deserialising straight into
 /// `heapless::Vec<Prediction, 8>` fails with "invalid length" and drops
 /// every prediction, including the ones for the configured platform.
@@ -124,7 +136,11 @@ fn destination_falls_back_to_shortened_name() {
 
 #[test]
 fn every_fixture_parses_with_match_all_filter() {
-    for name in ["arrivals_east_putney.json", "arrivals_earls_court.json"] {
+    for name in [
+        "arrivals_east_putney.json",
+        "arrivals_earls_court.json",
+        "line_arrivals_district_earls_court.json",
+    ] {
         let body = fixture(name);
         let ps = parse_predictions::<64>(&body, "").unwrap();
         assert!(!ps.is_empty(), "{name}");

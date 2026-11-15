@@ -39,11 +39,8 @@ mod psram;
 mod schedule;
 mod tasks;
 
-use config::{ScheduleConfig, WifiConfig};
-
 use crate::models::update::Update;
 use crate::models::{TFL_API_FIELD_LONG_STR_SIZE, TFL_API_FIELD_STR_SIZE};
-use crate::schedule::Schedule;
 use crate::tasks::display::display_task;
 use crate::tasks::ntp::ntp_task;
 use crate::tasks::request::request_task;
@@ -138,8 +135,8 @@ static UPDATE: Mutex<CriticalSectionRawMutex, Update> = Mutex::new(Update {
 // to know when there is new data to physically show.
 static NOTIFY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-// active/inactive schedule
-pub const SCHEDULE: Schedule = Schedule::from_config(ScheduleConfig::new());
+// The compiled-in configuration fails the build if invalid.
+const _: () = config::DEFAULTS.check();
 
 #[named]
 #[embassy_executor::main]
@@ -152,6 +149,14 @@ async fn main(spawner: Spawner) {
     let watchdog = embassy_rp::watchdog::Watchdog::new(split_p.watchdog_resources.watchdog);
     tasks::watchdog::log_reset_reason(&watchdog);
     spawner.spawn(unwrap!(watchdog_task(watchdog)));
+
+    // Configuration, shared read-only with the tasks for the life of the firmware.
+    static CONFIG: StaticCell<application::config::Config> = StaticCell::new();
+    let app_config: &'static application::config::Config = CONFIG.init(
+        // Cannot fail: `DEFAULTS` was validated at compile time.
+        unwrap!(application::config::Config::try_from(&config::DEFAULTS)),
+    );
+    info!("{}: config: {}", function_name!(), app_config);
     let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
@@ -210,7 +215,8 @@ async fn main(spawner: Spawner) {
     spawner.spawn(unwrap!(display_task(
         psram_static!(&psram, Display3in7, Display3in7::default()),
         epd_driver,
-        spi_device
+        spi_device,
+        app_config,
     )));
 
     // Allow display task to run and show splash before continuing setup
@@ -299,12 +305,12 @@ async fn main(spawner: Spawner) {
     );
 
     spawner.spawn(unwrap!(net_task(runner)));
-    let wifi_config = WifiConfig::new();
+    let wifi_config = &app_config.wifi;
     loop {
         match control
             .join(
-                wifi_config.ssid,
-                JoinOptions::new(wifi_config.password.as_bytes()),
+                &wifi_config.ssid,
+                JoinOptions::new(wifi_config.password.expose().as_bytes()),
             )
             .await
         {
@@ -338,7 +344,7 @@ async fn main(spawner: Spawner) {
 
     // Spawn the task to get predictions from the TFL API
     info!("{}: Starting TFL API request task...", function_name!());
-    spawner.spawn(unwrap!(request_task(stack.clone())));
+    spawner.spawn(unwrap!(request_task(stack.clone(), app_config)));
 
     let mut ticker = embassy_time::Ticker::every(Duration::from_secs(3600)); // 1 hour
     loop {

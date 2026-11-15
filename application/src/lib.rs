@@ -12,6 +12,7 @@
 //! ```
 #![cfg_attr(not(test), no_std)]
 
+pub mod config;
 pub mod de;
 pub mod header;
 pub mod json_scan;

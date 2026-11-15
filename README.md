@@ -164,6 +164,8 @@ Provide the configuration
 
 `firmware/config.template.rs` defines the required compile time config, which may include secrets. This should be copied to `firmware/src/config.rs` and the required settings set.
 
+The values are checked while the firmware compiles: an invalid one (e.g. a lowercase stop code) fails the build with a message naming the field. The rules are in `application/src/config.rs`.
+
 N.B., `firmware/src/config.rs` is explicitly ignored from vcs by inclusion in the `.gitignore`.
 
 ### Installation & Flashing via probe-rs
