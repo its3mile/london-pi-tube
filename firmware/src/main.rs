@@ -47,6 +47,7 @@ use crate::schedule::Schedule;
 use crate::tasks::display::display_task;
 use crate::tasks::ntp::ntp_task;
 use crate::tasks::request::request_task;
+use crate::tasks::watchdog::watchdog_task;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recommended to have these minimal entries.
@@ -88,6 +89,9 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 }
 
 assign_resources! {
+    watchdog_resources: WatchdogResources {
+        watchdog: WATCHDOG,
+    }
     display_resources: DisplayResources {
         spi1: SPI1,
         pin_9: PIN_9,
@@ -143,6 +147,11 @@ async fn main(spawner: Spawner) {
     info!("{}: Starting main task...", function_name!());
     let p: embassy_rp::Peripherals = embassy_rp::init(Default::default());
     let split_p = split_resources!(p);
+
+    // Watchdog first, so that a hang anywhere from here on restarts the device
+    let watchdog = embassy_rp::watchdog::Watchdog::new(split_p.watchdog_resources.watchdog);
+    tasks::watchdog::log_reset_reason(&watchdog);
+    spawner.spawn(unwrap!(watchdog_task(watchdog)));
     let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = aligned_bytes!("..//cyw43-firmware/43439A0_clm.bin");
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
@@ -222,6 +231,20 @@ async fn main(spawner: Spawner) {
         Timer::after_secs(5).await;
         info!("{}: overflowing the stack...", function_name!());
         core::hint::black_box(recurse(0));
+    }
+
+    #[cfg(feature = "watchdog-hang-test")]
+    {
+        // Test builds only: block the executor without yielding, as the
+        // e-paper driver does when the panel stops responding. Expect the log
+        // to stop, a restart about 8 s later, and the next boot to report a
+        // watchdog timeout, repeating until normal firmware is flashed.
+        Timer::after_secs(5).await;
+        info!("{}: blocking the executor...", function_name!());
+        // `black_box` keeps the compiler from flagging the rest of `main` as unreachable.
+        while core::hint::black_box(true) {
+            core::hint::spin_loop();
+        }
     }
 
     #[cfg(feature = "panic-restart-test")]

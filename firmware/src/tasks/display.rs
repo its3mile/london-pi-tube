@@ -19,7 +19,7 @@
 
 use ::function_name::named;
 use core::fmt::Write as _;
-use defmt::{error, info};
+use defmt::{debug, error, info};
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
@@ -76,10 +76,15 @@ pub async fn display_task(
     // Landscape mode, USB plug to the right
     display.set_rotation(DisplayRotation::Rotate270);
 
+    // The panel is awake after `EPD3in7::new`. Between refreshes it is kept in
+    // deep sleep to save power: e-paper holds its image without power.
+    let mut power = PanelPower::Awake;
+
     // Render splash drawing
     info!("{}: Rendering splash drawing", function_name!());
     show_splash(display, &mut epd_driver, &mut spi_device)
         .unwrap_or_else(|_| error!("{}: Failed to show splash", function_name!()));
+    power.sleep(&mut epd_driver, &mut spi_device);
     info!(
         "{}: Display updated with splash and ready for use",
         function_name!()
@@ -91,16 +96,19 @@ pub async fn display_task(
     loop {
         // Handle scheduled sleep
         if !SCHEDULE.is_active() {
-            // Clear display if about to enter sleep mode
+            // Blank the display for the inactive period
+            info!("{}: Inactive: clearing display", function_name!());
             let _ = display
                 .clear(styles.colors.bg)
                 .map_err(|_| DisplayError::RenderingFailed);
-
+            power.wake(&mut epd_driver, &mut spi_device);
             epd_driver
                 .update_and_display_frame(&mut spi_device, &mut display.buffer(), &mut Delay)
-                .expect("Display: Failed to update display with splash");
+                .unwrap_or_else(|_| error!("{}: Failed to clear display", function_name!()));
+            power.sleep(&mut epd_driver, &mut spi_device);
 
             SCHEDULE.wait_until_active().await;
+            continue;
         }
 
         // Acquire lock to read data update
@@ -118,9 +126,46 @@ pub async fn display_task(
         let _ = display
             .clear(styles.colors.bg)
             .map_err(|_| DisplayError::RenderingFailed);
+        power.wake(&mut epd_driver, &mut spi_device);
         show_update(display, &mut epd_driver, &mut spi_device, update)
             .unwrap_or_else(|_| error!("{}: Failed to show update", function_name!()));
+        power.sleep(&mut epd_driver, &mut spi_device);
         info!("{}: Finished rendering update", function_name!());
+    }
+}
+
+/// Tracks whether the panel is in deep sleep, so it is never put to sleep
+/// twice or woken twice: the driver keeps no state of its own.
+///
+/// Waking from deep sleep needs a hardware reset; `wake_up` re-runs the
+/// driver's `init`, which starts with one.
+#[derive(Clone, Copy, PartialEq, Eq, defmt::Format)]
+enum PanelPower {
+    Awake,
+    Asleep,
+}
+
+impl PanelPower {
+    #[named]
+    fn wake(&mut self, epd_driver: &mut DisplayDriver, spi_device: &mut DisplaySpiDevice) {
+        if *self == PanelPower::Asleep {
+            debug!("{}: waking panel", function_name!());
+            epd_driver
+                .wake_up(spi_device, &mut Delay)
+                .unwrap_or_else(|_| error!("{}: Failed to wake display", function_name!()));
+            *self = PanelPower::Awake;
+        }
+    }
+
+    #[named]
+    fn sleep(&mut self, epd_driver: &mut DisplayDriver, spi_device: &mut DisplaySpiDevice) {
+        if *self == PanelPower::Awake {
+            debug!("{}: putting panel to sleep", function_name!());
+            epd_driver
+                .sleep(spi_device, &mut Delay)
+                .unwrap_or_else(|_| error!("{}: Failed to sleep display", function_name!()));
+            *self = PanelPower::Asleep;
+        }
     }
 }
 

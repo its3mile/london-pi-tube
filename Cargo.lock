@@ -1184,7 +1184,7 @@ checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 [[package]]
 name = "epd-waveshare"
 version = "0.6.0"
-source = "git+https://github.com/ducktec/epd-waveshare?rev=0c3944c#0c3944c103f1b375b50d60af68f473fe6af25805"
+source = "git+https://github.com/its3mile/epd-waveshare?rev=821c4befae46f077aa9be92f8685965a3def55d5#821c4befae46f077aa9be92f8685965a3def55d5"
 dependencies = [
  "bit_field",
  "embedded-graphics-core",
