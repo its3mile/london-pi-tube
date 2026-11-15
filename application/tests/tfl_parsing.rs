@@ -320,3 +320,87 @@ fn status_malformed_is_error() {
     assert!(parse_line_status(b"{}").is_err());
     assert!(parse_line_status(b"[{\"lineStatuses\":[").is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Line name (from the status response) and station name (from StopPoint)
+
+#[test]
+fn status_includes_line_name() {
+    let line = parse_line_status(&fixture("status_district_good_service.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(line.name, "District");
+
+    let line = parse_line_status(&fixture("status_district_minor_delays.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(line.name, "District");
+    assert_eq!(
+        line.line_status.unwrap().status_severity_description,
+        "Minor Delays"
+    );
+}
+
+/// Feed a body in fixed-size chunks, as the firmware does, returning the name
+/// and how many bytes were read before it was found.
+fn station_name(body: &[u8], chunk: usize) -> Option<(String, usize)> {
+    let mut scanner = application::tfl::station_name_scanner();
+    let mut read = 0;
+    for part in body.chunks(chunk) {
+        read += part.len();
+        if let Some(name) = scanner.feed(part) {
+            return Some((name.to_owned(), read));
+        }
+    }
+    None
+}
+
+#[test]
+fn station_name_from_stop_point() {
+    for (name, expected) in [
+        (
+            "stoppoint_east_putney.json",
+            "East Putney Underground Station",
+        ),
+        (
+            "stoppoint_earls_court.json",
+            "Earl's Court Underground Station",
+        ),
+        // TfL returns the whole interchange for this stop: the fixture is only
+        // the first 16 KB of a 214 KB response, which is all that is needed.
+        (
+            "stoppoint_kings_cross_first_16k.json",
+            "King's Cross & St Pancras International",
+        ),
+    ] {
+        let body = fixture(name);
+        for chunk in [1, 7, 512, 4096] {
+            let (found, _) = station_name(&body, chunk).unwrap_or_else(|| panic!("{name}"));
+            assert_eq!(found, expected, "{name}, chunk {chunk}");
+        }
+    }
+}
+
+/// The point of streaming: the name arrives long before the end of the body.
+#[test]
+fn station_name_needs_only_the_start_of_the_body() {
+    let body = fixture("stoppoint_earls_court.json");
+    let (_, read) = station_name(&body, 512).unwrap();
+    assert!(read <= 2048, "read {read} of {} bytes", body.len());
+}
+
+/// Child stops also have a `commonName`; only the station's own is wanted.
+#[test]
+fn station_name_ignores_child_stops() {
+    let body = fixture("stoppoint_east_putney.json");
+    let text = String::from_utf8(body.clone()).unwrap();
+    assert!(text.matches("\"commonName\"").count() > 1);
+    let (found, _) = station_name(&body, 64).unwrap();
+    assert_eq!(found, "East Putney Underground Station");
+}
+
+#[test]
+fn station_name_missing() {
+    assert_eq!(station_name(br#"{"$type":"Tfl.Api.Presentation.Entities.ApiError","httpStatusCode":404,"message":"not found"}"#, 16), None);
+    assert_eq!(station_name(b"", 16), None);
+}
